@@ -16,6 +16,10 @@ const SCREEN_HEIGHT = switch (builtin.os.tag) {
 
 const AUDIO_SAMPLE_RATE = 48_000;
 
+const THREAD_COUNT = 7;
+
+const REFRESH_RATE_HZ = 60;
+
 const GAME_LIB_PATH = switch (builtin.os.tag) {
     .linux => "zig-out/lib/libgame.so",
     .macos => "zig-out/lib/libgame.dylib",
@@ -101,7 +105,7 @@ pub fn main() !void {
     defer page_allocator.free(audio_buffer);
 
     // Initial window setup.
-    const window = try sdl3.video.Window.init("Handmade Rocket", SCREEN_WIDTH, SCREEN_HEIGHT, .{ .high_pixel_density = false });
+    const window = try sdl3.video.Window.init("Hello SDL", SCREEN_WIDTH, SCREEN_HEIGHT, .{ .high_pixel_density = false });
     defer window.deinit();
     const screen_surface = try sdl3.surface.Surface.initFrom(SCREEN_WIDTH, SCREEN_HEIGHT, .array_rgbx_32, screen_buffer);
 
@@ -109,22 +113,17 @@ pub fn main() !void {
     // const display = try window.getDisplayForWindow();
     // const mode = try display.getCurrentMode();
     // const monitor_refresh_hz = mode.refresh_rate orelse 60;
-    const game_refresh_hz = 60.0;
+    const game_refresh_hz: f32 = REFRESH_RATE_HZ;
     const target_seconds_per_frame = 1.0 / game_refresh_hz;
     const schedular_granularity_ns = 0;
 
     // Work queue setup
-    const worker_count = 9;
+    const worker_count = THREAD_COUNT;
     var semaphore = std.Io.Semaphore{};
     var high_priority_work_queue: wq.WorkQueue = .{ .semaphore = &semaphore };
     var low_priority_work_queue: wq.WorkQueue = .{ .semaphore = &semaphore };
-    for (0..worker_count) |index| {
-        const thread = try std.Thread.spawn(.{}, wqWorker, .{
-            &high_priority_work_queue,
-            &low_priority_work_queue,
-            &semaphore,
-            @as(u32, @intCast(index + 1)),
-        });
+    for (0..worker_count) |_| {
+        const thread = try std.Thread.spawn(.{}, wqWorker, .{ &high_priority_work_queue, &low_priority_work_queue, &semaphore });
         thread.detach();
     }
 
@@ -188,6 +187,7 @@ pub fn main() !void {
     while (!quit) {
         quit = handleInputs(&g.input);
         {
+            // TODO: remove this lock if app supportes thread safe output audio
             try audio_stream.lock();
             defer audio_stream.unlock() catch unreachable;
 
@@ -266,12 +266,12 @@ fn handleKeyDown(keyboard: *game.Input.Controller, key: sdl3.events.Keyboard) vo
         .d => handleButton(&keyboard.move_right, key.down),
         .q => handleButton(&keyboard.left_shoulder, key.down),
         .e => handleButton(&keyboard.right_shoulder, key.down),
-        .space => handleButton(&keyboard.action_up, key.down),
         .left => handleButton(&keyboard.action_left, key.down),
         .right => handleButton(&keyboard.action_right, key.down),
-        .left_shift => handleButton(&keyboard.action_down, key.down),
-        .up => handleButton(&keyboard.start, key.down),
-        .down => handleButton(&keyboard.back, key.down),
+        .up => handleButton(&keyboard.action_up, key.down),
+        .down => handleButton(&keyboard.action_down, key.down),
+        .space => handleButton(&keyboard.start, key.down),
+        .backspace => handleButton(&keyboard.back, key.down),
         else => {},
     };
 }
@@ -289,8 +289,7 @@ fn secondsElapsed(start: u64, end: u64, frequency: u64) f32 {
 // Work Queue
 const wq = @import("work_q.zig");
 
-fn wqWorker(high_priority_queue: *wq.WorkQueue, low_priority_queue: *wq.WorkQueue, sema: *std.Io.Semaphore, index: u32) void {
-    game.WorkQueue.thread_index = index;
+fn wqWorker(high_priority_queue: *wq.WorkQueue, low_priority_queue: *wq.WorkQueue, sema: *std.Io.Semaphore) void {
     while (true) {
         sema.wait(single_threaded_io) catch unreachable;
         while (!high_priority_queue.doNextEntry()) {}

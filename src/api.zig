@@ -32,9 +32,6 @@ pub const Memory = extern struct {
 };
 
 pub const WorkQueue = extern struct {
-    /// platform needs to set an unique auto incrementing index per thread
-    pub threadlocal var thread_index: u32 = 0;
-
     pub const Queue = anyopaque;
     pub const Callback = *const fn (data: ?*anyopaque) callconv(.c) void;
 
