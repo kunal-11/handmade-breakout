@@ -1,6 +1,6 @@
 const std = @import("std");
 const sdl3 = @import("sdl3");
-const game = @import("game_api");
+const api = @import("game_api");
 
 const builtin = @import("builtin");
 
@@ -47,13 +47,13 @@ fn audio_cb(data: ?*Game, stream: sdl3.audio.Stream, additional_amount: usize, _
 }
 
 const Game = struct {
-    screen: game.Screen,
-    input: game.Input,
-    memory: game.Memory,
-    audio: game.Audio,
+    screen: api.Screen,
+    input: api.Input,
+    memory: api.Memory,
+    audio: api.Audio,
 
-    output_sound: game.OutputSound = undefined,
-    update_and_render: game.UpdateAndRender = undefined,
+    output_sound: api.OutputSound = undefined,
+    update_and_render: api.UpdateAndRender = undefined,
 
     lib_path: []const u8,
     last_load_time: std.Io.Timestamp = .zero,
@@ -68,14 +68,14 @@ const Game = struct {
         self.input.exe_reloaded = true;
         self.last_load_time = stat.mtime;
 
-        if (self.last_lib) |*lib| {
-            lib.close();
+        if (self.last_lib) |*last_lib| {
+            last_lib.close();
         }
-        var game_lib = try std.DynLib.open(self.lib_path);
-        self.output_sound = game_lib.lookup(game.OutputSound, "outputSound") orelse return error.MissingExport;
-        self.update_and_render = game_lib.lookup(game.UpdateAndRender, "updateAndRender") orelse return error.MissingExport;
+        var lib = try std.DynLib.open(self.lib_path);
+        self.output_sound = lib.lookup(api.OutputSound, "outputSound") orelse return error.MissingExport;
+        self.update_and_render = lib.lookup(api.UpdateAndRender, "updateAndRender") orelse return error.MissingExport;
 
-        self.last_lib = game_lib;
+        self.last_lib = lib;
     }
 };
 
@@ -99,7 +99,7 @@ pub fn main() !void {
     defer page_allocator.free(transient_memory);
     @memset(transient_memory, 0);
 
-    const screen_buffer = try page_allocator.alignedAlloc(u8, .fromByteUnits(game.cache_line), SCREEN_HEIGHT * SCREEN_WIDTH * 4);
+    const screen_buffer = try page_allocator.alignedAlloc(u8, .fromByteUnits(api.cache_line), SCREEN_HEIGHT * SCREEN_WIDTH * 4);
     defer page_allocator.free(screen_buffer);
     const audio_buffer = try page_allocator.alloc([2]i16, AUDIO_SAMPLE_RATE);
     defer page_allocator.free(audio_buffer);
@@ -113,8 +113,8 @@ pub fn main() !void {
     // const display = try window.getDisplayForWindow();
     // const mode = try display.getCurrentMode();
     // const monitor_refresh_hz = mode.refresh_rate orelse 60;
-    const game_refresh_hz: f32 = REFRESH_RATE_HZ;
-    const target_seconds_per_frame = 1.0 / game_refresh_hz;
+    const refresh_hz: f32 = REFRESH_RATE_HZ;
+    const target_seconds_per_frame = 1.0 / refresh_hz;
     const schedular_granularity_ns = 0;
 
     // Work queue setup
@@ -217,15 +217,15 @@ pub fn main() !void {
     }
 }
 
-fn handleInputs(input: *game.Input) bool {
+fn handleInputs(input: *api.Input) bool {
     for (&input.controllers) |*controller| {
-        inline for (std.meta.fields(game.Input.Controller)) |field| {
+        inline for (std.meta.fields(api.Input.Controller)) |field| {
             @field(controller, field.name).half_transition_count = 0;
         }
     }
 
-    inline for (std.meta.fields(game.Input.Mouse)) |field| {
-        if (@TypeOf(@field(input.mouse, field.name)) == game.Input.ButtonState) {
+    inline for (std.meta.fields(api.Input.Mouse)) |field| {
+        if (@TypeOf(@field(input.mouse, field.name)) == api.Input.ButtonState) {
             @field(input.mouse, field.name).half_transition_count = 0;
         }
     }
@@ -246,7 +246,7 @@ fn handleInputs(input: *game.Input) bool {
     return false;
 }
 
-fn handleMouseButton(mouse: *game.Input.Mouse, button: sdl3.events.MouseButton) void {
+fn handleMouseButton(mouse: *api.Input.Mouse, button: sdl3.events.MouseButton) void {
     switch (button.button) {
         .left => handleButton(&mouse.left, button.down),
         .middle => handleButton(&mouse.middle, button.down),
@@ -257,7 +257,7 @@ fn handleMouseButton(mouse: *game.Input.Mouse, button: sdl3.events.MouseButton) 
     }
 }
 
-fn handleKeyDown(keyboard: *game.Input.Controller, key: sdl3.events.Keyboard) void {
+fn handleKeyDown(keyboard: *api.Input.Controller, key: sdl3.events.Keyboard) void {
     if (key.repeat) return;
     if (key.scancode) |code| switch (code) {
         .w => handleButton(&keyboard.move_up, key.down),
@@ -276,7 +276,7 @@ fn handleKeyDown(keyboard: *game.Input.Controller, key: sdl3.events.Keyboard) vo
     };
 }
 
-fn handleButton(button: *game.Input.ButtonState, is_down: bool) void {
+fn handleButton(button: *api.Input.ButtonState, is_down: bool) void {
     std.debug.assert(is_down != button.ended_down);
     button.ended_down = is_down;
     button.half_transition_count += 1;
@@ -297,19 +297,19 @@ fn wqWorker(high_priority_queue: *wq.WorkQueue, low_priority_queue: *wq.WorkQueu
     }
 }
 
-fn wqAddEntry(queue: *game.WorkQueue.Queue, cb: game.WorkQueue.Callback, data: ?*anyopaque) callconv(.c) void {
+fn wqAddEntry(queue: *api.WorkQueue.Queue, cb: api.WorkQueue.Callback, data: ?*anyopaque) callconv(.c) void {
     const work_queue: *wq.WorkQueue = @ptrCast(@alignCast(queue));
     work_queue.addEntry(cb, data);
 }
 
-fn wqCompleteAllWork(queue: *game.WorkQueue.Queue) callconv(.c) void {
+fn wqCompleteAllWork(queue: *api.WorkQueue.Queue) callconv(.c) void {
     const work_queue: *wq.WorkQueue = @ptrCast(@alignCast(queue));
     work_queue.completeAllWork();
 }
 
 // File Handling
 const FileIterator = extern struct {
-    header: game.FileOps.Iterator,
+    header: api.FileOps.Iterator,
     files: [*][*:0]u8,
     file_count: u32,
     current_index: u32,
@@ -317,7 +317,7 @@ const FileIterator = extern struct {
 
 const file_search_fmt = ".assets/*.{s}";
 
-fn findFileWithExt(ext: [*:0]const u8) callconv(.c) ?*game.FileOps.Iterator {
+fn findFileWithExt(ext: [*:0]const u8) callconv(.c) ?*api.FileOps.Iterator {
     var buf: [64]u8 = undefined;
     const pattern = std.fmt.bufPrintZ(&buf, file_search_fmt, .{ext}) catch {
         std.debug.panic("File Error: ext too long!\n", .{});
@@ -334,8 +334,8 @@ fn findFileWithExt(ext: [*:0]const u8) callconv(.c) ?*game.FileOps.Iterator {
     return @ptrCast(result);
 }
 
-fn closeFileIterator(game_itr: *game.FileOps.Iterator) callconv(.c) void {
-    const itr: *FileIterator = @ptrCast(@alignCast(game_itr));
+fn closeFileIterator(api_itr: *api.FileOps.Iterator) callconv(.c) void {
+    const itr: *FileIterator = @ptrCast(@alignCast(api_itr));
     sdl3.free(itr.files);
     sdl3.free(itr);
 }
@@ -344,8 +344,8 @@ const FileHandle = struct {
     file: std.Io.File,
 };
 
-fn openNextFile(game_itr: *game.FileOps.Iterator) callconv(.c) ?*game.FileOps.Handle {
-    const itr: *FileIterator = @ptrCast(@alignCast(game_itr));
+fn openNextFile(api_itr: *api.FileOps.Iterator) callconv(.c) ?*api.FileOps.Handle {
+    const itr: *FileIterator = @ptrCast(@alignCast(api_itr));
     if (itr.current_index >= itr.file_count) return null;
 
     const file_path = std.mem.span(itr.files[itr.current_index]);
@@ -362,8 +362,8 @@ fn openNextFile(game_itr: *game.FileOps.Iterator) callconv(.c) ?*game.FileOps.Ha
     return handle;
 }
 
-fn readFile(game_handle: *game.FileOps.Handle, offset: u64, size: u64, dest: *anyopaque) callconv(.c) bool {
-    const handle: *FileHandle = @ptrCast(@alignCast(game_handle));
+fn readFile(api_handle: *api.FileOps.Handle, offset: u64, size: u64, dest: *anyopaque) callconv(.c) bool {
+    const handle: *FileHandle = @ptrCast(@alignCast(api_handle));
     const buffer: [*]u8 = @ptrCast(dest);
     const read_bytes = handle.file.readPositionalAll(single_threaded_io, buffer[0..size], offset) catch return false;
     return read_bytes == size;

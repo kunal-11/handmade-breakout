@@ -1,5 +1,5 @@
 const std = @import("std");
-const game = @import("game_api");
+const api = @import("game_api");
 
 const single_threaded_io = std.Io.Threaded.global_single_threaded.io();
 
@@ -17,11 +17,11 @@ pub const WorkQueue = struct {
 
     const Entry = struct {
         data: ?*anyopaque,
-        cb: game.WorkQueue.Callback,
+        cb: api.WorkQueue.Callback,
     };
 
     /// single producer
-    pub fn addEntry(queue: *WorkQueue, cb: game.WorkQueue.Callback, data: ?*anyopaque) void {
+    pub fn addEntry(queue: *WorkQueue, cb: api.WorkQueue.Callback, data: ?*anyopaque) void {
         std.debug.assert(queue.write_index -% queue.last_read_index.load(.acquire) < buffer_len);
         queue.entries[queue.write_index % buffer_len] = .{
             .data = data,
