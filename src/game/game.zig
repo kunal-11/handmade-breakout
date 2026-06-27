@@ -5,7 +5,7 @@ export fn updateAndRender(screen: *api.Screen, memory: *api.Memory, input: *api.
     _ = memory;
     _ = input;
 }
-export fn outputSound(audio: *api.Audio, memory: *api.Memory) void {
+export fn outputSound(audio: *api.Audio, memory: *api.Memory) callconv(.c) void {
     _ = audio;
     _ = memory;
 }
