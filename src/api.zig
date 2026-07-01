@@ -103,12 +103,12 @@ pub const Input = extern struct {
         z: f32 = 0,
     };
 
-    exe_reloaded: bool,
-    seconds_to_update: f32,
-
-    mouse: Mouse = .{},
     /// first is assumed to be keyboard
     controllers: [1]Controller = .{.{}},
+    mouse: Mouse = .{},
+
+    exe_reloaded: bool,
+    seconds_to_update: f32,
 };
 
 pub const UpdateAndRender = *const fn (*Screen, *Memory, *Input) callconv(.c) void;

@@ -4,26 +4,14 @@ const Step = std.Build.Step;
 const Options = struct {
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
-    game_api_module: *std.Build.Module,
 };
 
 pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const target = b.standardTargetOptions(.{});
+    const native_opts = Options{ .optimize = optimize, .target = target };
 
-    const game_api = b.createModule(.{
-        .root_source_file = b.path("src/api.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    const opts = Options{
-        .target = target,
-        .optimize = optimize,
-        .game_api_module = game_api,
-    };
-
-    const game_so = buildGameSo(b, opts);
+    const game_so = buildGameSo(b, native_opts);
 
     // build game so
     const lib_cmd = b.addInstallArtifact(game_so, .{});
@@ -35,7 +23,7 @@ pub fn build(b: *std.Build) void {
     const asm_step = b.step("asm", "emit game assembly");
     asm_step.dependOn(&emit_asm.step);
 
-    const sdl_platform_exe = buildSDLPlatformExe(b, opts);
+    const sdl_platform_exe = buildSDLPlatformExe(b, native_opts);
 
     // run sld platform
     const run_cmd = b.addRunArtifact(sdl_platform_exe);
@@ -45,14 +33,82 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run SDL platform");
     run_step.dependOn(&run_cmd.step);
 
+    const wasm_target = b.resolveTargetQuery(.{
+        .cpu_arch = .wasm32,
+        .os_tag = .freestanding,
+        .cpu_features_add = std.Target.wasm.featureSet(&.{ .atomics, .bulk_memory, .simd128 }),
+    });
+    const wasm_opts = Options{ .optimize = optimize, .target = wasm_target };
+    const wasm_exe = buildGameWasm(b, wasm_opts);
+
+    // build web files
+    const web_out_dir = "web";
+    const wasm_cmd = b.addInstallArtifact(wasm_exe, .{ .dest_dir = .{ .override = .{ .custom = web_out_dir } } });
+    const web_platform = b.addInstallDirectory(.{
+        .source_dir = b.path("src/web/static"),
+        .install_dir = .{ .custom = web_out_dir },
+        .install_subdir = "",
+    });
+
+    const web_step = b.step("web", "Build game web files");
+    web_step.dependOn(&wasm_cmd.step);
+    web_step.dependOn(&web_platform.step);
+
     // check build for errors, no binaries created
     const check = b.step("check", "Check build");
     check.dependOn(&game_so.step);
     check.dependOn(&sdl_platform_exe.step);
+    check.dependOn(&wasm_exe.step);
 
     // default build step
     b.installArtifact(game_so);
     b.installArtifact(sdl_platform_exe);
+    b.installArtifact(wasm_exe);
+}
+
+fn gameApiModule(b: *std.Build, opts: Options) *std.Build.Module {
+    return b.createModule(.{
+        .root_source_file = b.path("src/api.zig"),
+        .target = opts.target,
+        .optimize = opts.optimize,
+    });
+}
+
+fn buildGameWasm(b: *std.Build, opts: Options) *Step.Compile {
+    const game_api_module = gameApiModule(b, opts);
+
+    const game_module = b.createModule(.{
+        .root_source_file = b.path("src/game/game.zig"),
+        .target = opts.target,
+        .optimize = opts.optimize,
+        .imports = &.{
+            .{ .name = "game_api", .module = game_api_module },
+        },
+    });
+
+    const shim_module = b.createModule(.{
+        .root_source_file = b.path("src/web/shim.zig"),
+        .target = opts.target,
+        .optimize = opts.optimize,
+        .imports = &.{
+            .{ .name = "game_api", .module = game_api_module },
+            .{ .name = "game", .module = game_module },
+        },
+    });
+
+    const exe = b.addExecutable(.{
+        .name = "app",
+        .root_module = shim_module,
+        .use_llvm = true,
+    });
+
+    exe.entry = .disabled;
+    exe.rdynamic = true;
+    exe.import_memory = true;
+    exe.shared_memory = true;
+    exe.max_memory = 1024 * 64 * 1024;
+
+    return exe;
 }
 
 fn buildGameSo(b: *std.Build, opts: Options) *Step.Compile {
@@ -61,7 +117,7 @@ fn buildGameSo(b: *std.Build, opts: Options) *Step.Compile {
         .target = opts.target,
         .optimize = opts.optimize,
         .imports = &.{
-            .{ .name = "game_api", .module = opts.game_api_module },
+            .{ .name = "game_api", .module = gameApiModule(b, opts) },
         },
         // needed for debug symbols lookup with dlopen
         .link_libc = true,
@@ -87,7 +143,7 @@ fn buildSDLPlatformExe(b: *std.Build, opts: Options) *Step.Compile {
         .optimize = opts.optimize,
         .imports = &.{
             .{ .name = "sdl3", .module = sdl3_module },
-            .{ .name = "game_api", .module = opts.game_api_module },
+            .{ .name = "game_api", .module = gameApiModule(b, opts) },
         },
     });
 

@@ -213,6 +213,8 @@ pub fn main() !void {
         try window.updateSurface();
 
         const end_counter = sdl3.timer.getPerformanceCounter();
+        const frame_secs = secondsElapsed(last_frame_end, end_counter, counter_frequency);
+        std.debug.print("Time: {} | FPS: {}\n", .{ frame_secs * 1000, 1 / frame_secs });
         last_frame_end = end_counter;
     }
 }
