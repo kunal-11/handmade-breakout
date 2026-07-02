@@ -1,8 +1,6 @@
-pub const debug = struct {
-    pub inline fn assert(check: bool, msg: []const u8) void {
-        if (!check) @panic(msg);
-    }
-};
+pub inline fn assert(check: bool, msg: []const u8) void {
+    if (!check) @panic(msg);
+}
 
 pub const Color = struct {
     r: f32,
@@ -64,14 +62,12 @@ pub const Arena = struct {
     }
 
     inline fn pushBytes(arena: *Arena, len: usize, comptime alignment: usize) []align(alignment) u8 {
-        const offset = alignOffset(&arena.memory[arena.used], alignment);
-        arena.used += offset + len;
-        return @alignCast(arena.memory[arena.used - len .. arena.used]);
-    }
+        const ptr = @intFromPtr(&arena.memory[arena.used]);
+        const align_offset = alignUp(ptr, alignment) - ptr;
 
-    inline fn alignOffset(ptr: *anyopaque, alignment: usize) usize {
-        const aligned_ptr = alignUp(@intFromPtr(ptr), alignment);
-        return aligned_ptr - @intFromPtr(ptr);
+        arena.used += align_offset + len;
+        assert(arena.used <= arena.memory.len, "arena OOM!");
+        return @alignCast(arena.memory[arena.used - len .. arena.used]);
     }
 
     inline fn alignUp(val: usize, alignment: usize) usize {

@@ -1,6 +1,5 @@
 const util = @import("util.zig");
 const math = @import("math.zig");
-const debug = util.debug;
 
 const linear_blending_enabled = false;
 
@@ -38,7 +37,7 @@ pub const Group = struct {
     }
 
     fn addItem(group: *Group, item: Item) void {
-        debug.assert(group.item_count < group.items.len, "render group OOM");
+        util.assert(group.item_count < group.items.len, "render group OOM");
         group.items[group.item_count] = item;
         group.item_count += 1;
     }

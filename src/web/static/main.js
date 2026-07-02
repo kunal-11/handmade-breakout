@@ -77,20 +77,11 @@ const frame_buffer = new Uint8ClampedArray(shared_buffer.buffer, dv.getUint32(ap
 const screen_ctx = canvas.getContext('2d');
 const image_data = screen_ctx.createImageData(canvas.width, canvas.height);
 
-// file handeling
-
-let updated = false;
-setInterval(() => {
+function frame() {
 	copyInputs();
 	if (!paused) {
 		app.instance.exports.updateAndRender(app_screen, app_memory, app_input);
 		image_data.data.set(frame_buffer);
-		updated = true;
-	}
-}, target_frame_time_ms);
-
-function frame() {
-	if (updated) {
 		screen_ctx.putImageData(image_data, 0, 0);
 	}
 	requestAnimationFrame(frame);
