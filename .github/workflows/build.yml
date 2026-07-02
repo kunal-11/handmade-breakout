@@ -1,0 +1,42 @@
+name: build and deploy
+
+on: 
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v4
+
+      - name: install zig
+        uses: mlugg/setup-zig@v1
+        with:
+          version: 0.16.0
+
+      - name: build
+        run: zig build web -Doptimize=ReleaseSmall
+
+      - name: upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: zig-out/web
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: deploy to pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
