@@ -9,9 +9,6 @@ jobs:
   build_and_deploy_job:
     runs-on: ubuntu-latest
     name: Build and Deploy Job
-    permissions:
-       id-token: write
-       contents: read
     steps:
       - name: checkout code
         uses: actions/checkout@v4
@@ -22,7 +19,7 @@ jobs:
           version: 0.16.0
 
       - name: build
-        run: zig build web -Doptimize=ReleaseSmall
+        run: zig build web -Doptimize=ReleaseSmall --verbose
 
       - name: deploy azure static app
         id: builddeploy
@@ -30,6 +27,7 @@ jobs:
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_GRAY_DUNE_035375D10 }}
           action: "upload"
-          skip_app_build: true
           app_location: "zig-out/web"
           output_location: "zig-out/web"
+          skip_app_build: true
+          skip_api_build: true
