@@ -19,7 +19,7 @@ const app_memory = app.instance.exports.allocMemory(permanent_len, transient_len
 
 const worker_count = 7;
 for (let i = 0; i < worker_count; i++) {
-	const worker = new Worker("worker.js");
+	const worker = new Worker("worker.js", { type: "module" });
 	worker.postMessage({
 		wasm_module: app.module,
 		buffer: shared_buffer,
@@ -86,12 +86,17 @@ const frame_buffer = new Uint8ClampedArray(shared_buffer.buffer, dv.getUint32(ap
 const screen_ctx = canvas.getContext('2d');
 const image_data = screen_ctx.createImageData(canvas.width, canvas.height);
 
-function frame() {
-	copyInputs();
-	if (!paused) {
-		app.instance.exports.updateAndRender(app_screen, app_memory, app_input);
-		image_data.data.set(frame_buffer);
-		screen_ctx.putImageData(image_data, 0, 0);
+let last_render = 0;
+const frame_sync_epsilon = 1.5;
+function frame(now) {
+	if (now - last_render + frame_sync_epsilon >= target_frame_time_ms) {
+		copyInputs();
+		if (!paused) {
+			app.instance.exports.updateAndRender(app_screen, app_memory, app_input);
+			image_data.data.set(frame_buffer);
+			screen_ctx.putImageData(image_data, 0, 0);
+		}
+		last_render = now;
 	}
 	requestAnimationFrame(frame);
 }
