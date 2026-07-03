@@ -1,6 +1,7 @@
 const std = @import("std");
 const sdl3 = @import("sdl3");
 const api = @import("game_api");
+const wq = @import("work_queue");
 
 const builtin = @import("builtin");
 
@@ -41,7 +42,7 @@ fn audio_cb(data: ?*Game, stream: sdl3.audio.Stream, additional_amount: usize, _
         g.audio.sample_count = additional_amount / 4;
         g.output_sound(&g.audio, &g.memory);
         stream.putData(@ptrCast(g.audio.buffer[0..g.audio.sample_count])) catch {
-            std.debug.panic("Error outputting audio to SDL!\n", .{});
+            @panic("error outputting audio to SDL");
         };
     }
 }
@@ -119,11 +120,11 @@ pub fn main() !void {
 
     // Work queue setup
     const worker_count = THREAD_COUNT;
-    var semaphore = std.Io.Semaphore{};
-    var high_priority_work_queue: wq.WorkQueue = .{ .semaphore = &semaphore };
-    var low_priority_work_queue: wq.WorkQueue = .{ .semaphore = &semaphore };
+    var signal: wq.Signal = .{ .io = single_threaded_io, .counter = .init(0) };
+    var high_priority_work_queue: wq.WorkQueue = .{ .signal = &signal };
+    var low_priority_work_queue: wq.WorkQueue = .{ .signal = &signal };
     for (0..worker_count) |_| {
-        const thread = try std.Thread.spawn(.{}, wqWorker, .{ &high_priority_work_queue, &low_priority_work_queue, &semaphore });
+        const thread = try std.Thread.spawn(.{}, wqWorker, .{ &high_priority_work_queue, &low_priority_work_queue, &signal });
         thread.detach();
     }
 
@@ -154,8 +155,8 @@ pub fn main() !void {
             .work_queue = .{
                 .high_priority_queue = &high_priority_work_queue,
                 .low_priority_queue = &low_priority_work_queue,
-                .add_entry = &wqAddEntry,
-                .complete_all_work = &wqCompleteAllWork,
+                .add_entry = &wq.addEntryShim,
+                .complete_all_work = &wq.completeAllWorkShim,
             },
 
             .file_ops = .{
@@ -289,24 +290,13 @@ fn secondsElapsed(start: u64, end: u64, frequency: u64) f32 {
 }
 
 // Work Queue
-const wq = @import("work_q.zig");
-
-fn wqWorker(high_priority_queue: *wq.WorkQueue, low_priority_queue: *wq.WorkQueue, sema: *std.Io.Semaphore) void {
+fn wqWorker(high_priority_queue: *wq.WorkQueue, low_priority_queue: *wq.WorkQueue, signal: *wq.Signal) void {
     while (true) {
-        sema.wait(single_threaded_io) catch unreachable;
+        const signal_counter = signal.counter.load(.acquire);
         while (!high_priority_queue.doNextEntry()) {}
         while (!low_priority_queue.doNextEntry()) {}
+        signal.wait(signal_counter);
     }
-}
-
-fn wqAddEntry(queue: *api.WorkQueue.Queue, cb: api.WorkQueue.Callback, data: ?*anyopaque) callconv(.c) void {
-    const work_queue: *wq.WorkQueue = @ptrCast(@alignCast(queue));
-    work_queue.addEntry(cb, data);
-}
-
-fn wqCompleteAllWork(queue: *api.WorkQueue.Queue) callconv(.c) void {
-    const work_queue: *wq.WorkQueue = @ptrCast(@alignCast(queue));
-    work_queue.completeAllWork();
 }
 
 // File Handling

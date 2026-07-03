@@ -1,5 +1,6 @@
 const api = @import("game_api");
 const game = @import("game");
+const wq = @import("work_queue");
 
 const Arena = struct {
     memory: [*]u8,
@@ -42,6 +43,20 @@ var global_arena = Arena{ .memory = @extern([*]u8, .{ .name = "__heap_base" }) }
 
 export fn allocMemory(permanent_len: usize, transient_len: usize) callconv(.c) *api.Memory {
     const memory = global_arena.pushStruct(api.Memory);
+
+    const signal = global_arena.pushStruct(wq.Signal);
+    signal.* = .{ .io = .failing, .counter = .init(0) };
+
+    const high_q = global_arena.pushStruct(wq.WorkQueue);
+    high_q.* = .{
+        .signal = signal,
+    };
+
+    const low_q = global_arena.pushStruct(wq.WorkQueue);
+    low_q.* = .{
+        .signal = signal,
+    };
+
     memory.* = .{
         .permanent_storage = global_arena.pushArray(u8, permanent_len).ptr,
         .permanent_storage_len = permanent_len,
@@ -49,9 +64,15 @@ export fn allocMemory(permanent_len: usize, transient_len: usize) callconv(.c) *
         .transient_storage = global_arena.pushArray(u8, transient_len).ptr,
         .transient_storage_len = transient_len,
 
+        .work_queue = .{
+            .high_priority_queue = high_q,
+            .low_priority_queue = low_q,
+            .add_entry = &wq.addEntryShim,
+            .complete_all_work = &wq.completeAllWorkShim,
+        },
+
         // TODO: platform file/queue ops
         .file_ops = undefined,
-        .work_queue = undefined,
     };
     return memory;
 }
@@ -85,6 +106,17 @@ export fn allocAudio(buf_samples: usize, sample_rate: u32) callconv(.c) *api.Aud
         .samples_per_second = sample_rate,
     };
     return audio;
+}
+
+export fn worker(memory: *api.Memory) callconv(.c) void {
+    const high_priority_wq: *wq.WorkQueue = @ptrCast(@alignCast(memory.work_queue.high_priority_queue));
+    const low_priority_wq: *wq.WorkQueue = @ptrCast(@alignCast(memory.work_queue.low_priority_queue));
+    while (true) {
+        const signal_counter = high_priority_wq.signal.counter.load(.acquire);
+        while (!high_priority_wq.doNextEntry()) {}
+        while (!low_priority_wq.doNextEntry()) {}
+        high_priority_wq.signal.wait(signal_counter);
+    }
 }
 
 comptime {

@@ -17,6 +17,16 @@ const permanent_len = 1 * MB;
 const transient_len = 10 * MB;
 const app_memory = app.instance.exports.allocMemory(permanent_len, transient_len);
 
+const worker_count = 7;
+for (let i = 0; i < worker_count; i++) {
+	const worker = new Worker("worker.js");
+	worker.postMessage({
+		wasm_module: app.module,
+		buffer: shared_buffer,
+		app_memory_offset: app_memory,
+	});
+}
+
 // input handeling
 const target_frame_time_ms = 1000 / 60;
 const app_input = app.instance.exports.allocInput(target_frame_time_ms / 1000);
@@ -30,7 +40,6 @@ const key_indices = {
 };
 
 let inputs = [];
-
 let paused = false;
 
 window.addEventListener("keydown", (e) => {

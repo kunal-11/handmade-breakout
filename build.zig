@@ -74,6 +74,17 @@ fn gameApiModule(b: *std.Build, opts: Options) *std.Build.Module {
     });
 }
 
+fn workQueueModule(b: *std.Build, game_api: *std.Build.Module, opts: Options) *std.Build.Module {
+    return b.createModule(.{
+        .root_source_file = b.path("src/work_q.zig"),
+        .target = opts.target,
+        .optimize = opts.optimize,
+        .imports = &.{
+            .{ .name = "game_api", .module = game_api },
+        },
+    });
+}
+
 fn buildGameWasm(b: *std.Build, opts: Options) *Step.Compile {
     const game_api_module = gameApiModule(b, opts);
 
@@ -91,6 +102,7 @@ fn buildGameWasm(b: *std.Build, opts: Options) *Step.Compile {
         .target = opts.target,
         .optimize = opts.optimize,
         .imports = &.{
+            .{ .name = "work_queue", .module = workQueueModule(b, game_api_module, opts) },
             .{ .name = "game_api", .module = game_api_module },
             .{ .name = "game", .module = game_module },
         },
@@ -137,13 +149,16 @@ fn buildSDLPlatformExe(b: *std.Build, opts: Options) *Step.Compile {
         .optimize = opts.optimize,
     }).module("sdl3");
 
+    const game_api_moudle = gameApiModule(b, opts);
+
     const sdl_platform_module = b.createModule(.{
         .root_source_file = b.path("src/sdl/sdl.zig"),
         .target = opts.target,
         .optimize = opts.optimize,
         .imports = &.{
             .{ .name = "sdl3", .module = sdl3_module },
-            .{ .name = "game_api", .module = gameApiModule(b, opts) },
+            .{ .name = "game_api", .module = game_api_moudle },
+            .{ .name = "work_queue", .module = workQueueModule(b, game_api_moudle, opts) },
         },
     });
 
