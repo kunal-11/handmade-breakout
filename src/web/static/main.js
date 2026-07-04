@@ -18,8 +18,12 @@ const transient_len = 10 * MB;
 const app_memory = app.instance.exports.allocMemory(permanent_len, transient_len);
 
 const worker_count = 7;
+const worker = await fetch("worker.js");
+const worker_bytes = await worker.blob();
+const worker_url = URL.createObjectURL(worker_bytes);
+
 for (let i = 0; i < worker_count; i++) {
-	const worker = new Worker("worker.js", { type: "module" });
+	const worker = new Worker(worker_url, { type: "module" });
 	worker.postMessage({
 		wasm_module: app.module,
 		buffer: shared_buffer,
