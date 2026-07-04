@@ -79,11 +79,11 @@ pub const WorkQueue = struct {
 
     /// returns true if no entries are remaining
     pub fn doNextEntry(queue: *WorkQueue) bool {
-        const original_last_read_index = queue.last_read_index.load(.acquire);
-        const next_read_index = original_last_read_index +% 1;
+        const last_read_index = queue.last_read_index.load(.acquire);
+        const next_read_index = last_read_index +% 1;
         if (next_read_index != @atomicLoad(u32, &queue.write_index, .acquire)) {
             const entry = queue.entries[next_read_index % buffer_len];
-            if (queue.last_read_index.cmpxchgWeak(original_last_read_index, next_read_index, .acq_rel, .acquire) == null) {
+            if (queue.last_read_index.cmpxchgWeak(last_read_index, next_read_index, .acq_rel, .acquire) == null) {
                 entry.cb(entry.data);
                 _ = queue.completed_count.fetchAdd(1, .acq_rel);
             }

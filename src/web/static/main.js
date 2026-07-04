@@ -26,24 +26,6 @@ const permanent_len = 1 * MB;
 const transient_len = 10 * MB;
 const app_memory = app.instance.exports.allocMemory(permanent_len, transient_len);
 
-const worker = await fetch("worker.js");
-const worker_bytes = await worker.blob();
-const worker_url = URL.createObjectURL(worker_bytes);
-
-const worker_count = 7;
-const stack_size = 1 * MB;
-const worker_stack_base = app.instance.exports.allocBytes(worker_count * stack_size);
-
-for (let i = 0; i < worker_count; i++) {
-	const worker = new Worker(worker_url, { type: "module" });
-	worker.postMessage({
-		wasm_module: app.module,
-		buffer: shared_buffer,
-		app_memory_offset: app_memory,
-		stack_offset: worker_stack_base + i * stack_size,
-	});
-}
-
 // input handeling
 const target_frame_time_ms = 1000 / 60;
 const app_input = app.instance.exports.allocInput(target_frame_time_ms / 1000);
@@ -103,6 +85,26 @@ const frame_buffer = new Uint8ClampedArray(shared_buffer.buffer, dv.getUint32(ap
 const screen_ctx = canvas.getContext('2d');
 const image_data = screen_ctx.createImageData(canvas.width, canvas.height);
 
+// setup workers
+const worker = await fetch("worker.js");
+const worker_bytes = await worker.blob();
+const worker_url = URL.createObjectURL(worker_bytes);
+
+const worker_count = 7;
+const stack_size = 1 * MB;
+const worker_stack_base = app.instance.exports.allocBytes(worker_count * stack_size);
+
+for (let i = 0; i < worker_count; i++) {
+	const worker = new Worker(worker_url, { type: "module" });
+	worker.postMessage({
+		wasm_module: app.module,
+		buffer: shared_buffer,
+		app_memory_offset: app_memory,
+		stack_offset: worker_stack_base + (i + 1) * stack_size,
+	});
+}
+
+// render loop
 let last_render = 0;
 const frame_sync_epsilon = 1.5;
 function frame(now) {
