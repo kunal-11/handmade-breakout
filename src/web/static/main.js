@@ -1,11 +1,20 @@
-const shared_buffer = new WebAssembly.Memory({ initial: 1024, maximum: 1024, shared: true });
+const shared_buffer = new WebAssembly.Memory({ initial: 4096, maximum: 4096, shared: true });
 const dv = new DataView(shared_buffer.buffer);
 
 const KB = 1 << 10;
 const MB = 1 << 20;
+
+function wasmLog(ptr, len) {
+	const bytes = new Uint8Array(shared_buffer.buffer, ptr, len);
+	const copy = bytes.slice();
+	const message = new TextDecoder("utf-8").decode(copy);
+	console.log("wasm: ", message);
+}
+
 const imports = {
 	env: {
 		memory: shared_buffer,
+		jsConsoleLog: wasmLog,
 	}
 };
 
@@ -17,10 +26,13 @@ const permanent_len = 1 * MB;
 const transient_len = 10 * MB;
 const app_memory = app.instance.exports.allocMemory(permanent_len, transient_len);
 
-const worker_count = 7;
 const worker = await fetch("worker.js");
 const worker_bytes = await worker.blob();
 const worker_url = URL.createObjectURL(worker_bytes);
+
+const worker_count = 7;
+const stack_size = 1 * MB;
+const worker_stack_base = app.instance.exports.allocBytes(worker_count * stack_size);
 
 for (let i = 0; i < worker_count; i++) {
 	const worker = new Worker(worker_url, { type: "module" });
@@ -28,6 +40,7 @@ for (let i = 0; i < worker_count; i++) {
 		wasm_module: app.module,
 		buffer: shared_buffer,
 		app_memory_offset: app_memory,
+		stack_offset: worker_stack_base + i * stack_size,
 	});
 }
 

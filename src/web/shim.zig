@@ -108,9 +108,21 @@ export fn allocAudio(buf_samples: usize, sample_rate: u32) callconv(.c) *api.Aud
     return audio;
 }
 
-export fn worker(memory: *api.Memory) callconv(.c) void {
+export fn allocBytes(len: usize) callconv(.c) [*]u8 {
+    return global_arena.pushArray(u8, len).ptr;
+}
+
+export fn worker(memory: *api.Memory, sp: i32) callconv(.c) noreturn {
+    asm volatile (
+        \\local.get %[sp]
+        \\global.set __stack_pointer
+        :
+        : [sp] "r" (sp),
+    );
+
     const high_priority_wq: *wq.WorkQueue = @ptrCast(@alignCast(memory.work_queue.high_priority_queue));
     const low_priority_wq: *wq.WorkQueue = @ptrCast(@alignCast(memory.work_queue.low_priority_queue));
+
     while (true) {
         const signal_counter = high_priority_wq.signal.counter.load(.acquire);
         while (!high_priority_wq.doNextEntry()) {}
@@ -122,4 +134,15 @@ export fn worker(memory: *api.Memory) callconv(.c) void {
 comptime {
     _ = game.updateAndRender;
     _ = game.outputSound;
+}
+
+extern fn jsConsoleLog([*]const u8, usize) callconv(.c) void;
+
+const std = @import("std");
+
+pub fn panic(msg: []const u8, error_return_trace: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
+    _ = error_return_trace;
+    _ = ret_addr;
+    jsConsoleLog(msg.ptr, msg.len);
+    @trap();
 }

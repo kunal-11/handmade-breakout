@@ -118,7 +118,7 @@ fn buildGameWasm(b: *std.Build, opts: Options) *Step.Compile {
     exe.rdynamic = true;
     exe.import_memory = true;
     exe.shared_memory = true;
-    exe.max_memory = 1024 * 64 * 1024;
+    exe.max_memory = 4096 * 64 * 1024;
 
     return exe;
 }
