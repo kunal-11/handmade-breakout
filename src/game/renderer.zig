@@ -1,6 +1,8 @@
 const util = @import("util.zig");
 const math = @import("math.zig");
 
+const api = @import("game_api");
+
 const linear_blending_enabled = false;
 
 const Item = union(enum) {
@@ -42,15 +44,49 @@ pub const Group = struct {
         group.item_count += 1;
     }
 
-    pub fn render(group: *Group, draw_buffer: *const DrawBuffer) void {
-        for (group.items[0..group.item_count]) |item| {
+    const tile_height = 128;
+    const tile_width = 128;
+    pub fn render(group: *Group, trans_arena: *util.Arena, draw_buffer: *const DrawBuffer, work_queue: *api.WorkQueue) void {
+        const flusher = util.Arena.Flusher.init(trans_arena);
+        defer flusher.flush();
+
+        const screen_dims = math.Vec2.init(@floatFromInt(draw_buffer.width), @floatFromInt(draw_buffer.height));
+        var y: u32 = 0;
+        while (y < draw_buffer.height) : (y += tile_height) {
+            var x: u32 = 0;
+            while (x < draw_buffer.width) : (x += tile_width) {
+                const tile_start = math.Vec2.init(@floatFromInt(x), @floatFromInt(y));
+                const tile_end = tile_start.add(.init(tile_width, tile_height));
+                const tile_end_clipped = math.Vec2.init(@min(screen_dims.x, tile_end.x), @min(screen_dims.y, tile_end.y));
+
+                const tile_data = trans_arena.pushStruct(RenderTile);
+                tile_data.* = .{
+                    .group = group,
+                    .draw_buffer = draw_buffer,
+                    .clip_rect = .init(tile_start, tile_end_clipped),
+                };
+                work_queue.add_entry(work_queue.high_priority_queue, &renderWorker, tile_data);
+            }
+        }
+        work_queue.complete_all_work(work_queue.high_priority_queue);
+    }
+
+    const RenderTile = extern struct {
+        group: *Group,
+        clip_rect: math.Rectangle,
+        draw_buffer: *const DrawBuffer,
+    };
+
+    fn renderWorker(data: ?*anyopaque) callconv(.c) void {
+        const tile: *RenderTile = @ptrCast(@alignCast(data.?));
+        for (tile.group.items[0..tile.group.item_count]) |item| {
             switch (item) {
-                .clear => |clear| drawClear(draw_buffer, clear.color),
-                .rectangle => |rect| drawRectangle(draw_buffer, rect.rect, rect.color),
+                .clear => |clear| drawClear(tile.draw_buffer, tile.clip_rect, clear.color),
+                .rectangle => |rect| drawRectangle(tile.draw_buffer, tile.clip_rect, rect.rect, rect.color),
             }
         }
         if (linear_blending_enabled) {
-            linearToSrgb(draw_buffer);
+            linearToSrgb(tile.draw_buffer, tile.clip_rect);
         }
     }
 };
@@ -64,37 +100,33 @@ pub const DrawBuffer = struct {
     memory: [*]u8,
 };
 
-fn drawClear(draw_buffer: *const DrawBuffer, color: util.Color) void {
+fn drawClear(draw_buffer: *const DrawBuffer, clip_rect: math.Rectangle, color: util.Color) void {
     const color_linear = if (linear_blending_enabled) color.srgbToLinear() else color;
     const color_u32 = color_linear.multiplyAlpha().toPackedU32();
-    for (0..draw_buffer.height) |y| {
+
+    const min: @Vector(2, u32) = @round(clip_rect.min.vector());
+    const max: @Vector(2, u32) = @round(clip_rect.max.vector());
+
+    for (min[1]..max[1]) |y| {
         const row_start: [*]u32 = @ptrCast(@alignCast(draw_buffer.memory + y * draw_buffer.pitch));
-        @memset(row_start[0..draw_buffer.width], color_u32);
+        @memset(row_start[min[0]..max[0]], color_u32);
     }
 }
 
-fn drawRectangle(draw_buffer: *const DrawBuffer, rect: math.Rectangle, color: util.Color) void {
-    const screen_dims = math.Vec2.init(@floatFromInt(draw_buffer.width), @floatFromInt(draw_buffer.height));
+fn drawRectangle(draw_buffer: *const DrawBuffer, clip_rect: math.Rectangle, rect: math.Rectangle, color: util.Color) void {
+    const min_f = @max(clip_rect.min.vector(), rect.min.vector());
+    const max_f = @min(clip_rect.max.vector(), rect.max.vector());
 
-    const min_x_f = @max(0, rect.min.x);
-    const min_y_f = @max(0, rect.min.y);
-    const max_x_f = @min(screen_dims.x, rect.max.x);
-    const max_y_f = @min(screen_dims.y, rect.max.y);
+    if (@reduce(.Or, min_f >= max_f)) return;
 
-    if (min_x_f >= max_x_f or min_y_f >= max_y_f) return;
-
-    const min_x: u32 = @round(min_x_f);
-    const min_y: u32 = @round(min_y_f);
-
-    const max_x: u32 = @round(max_x_f);
-    const max_y: u32 = @round(max_y_f);
+    const min: @Vector(2, u32) = @round(min_f);
+    const max: @Vector(2, u32) = @round(max_f);
 
     const color_linear = if (linear_blending_enabled) color.srgbToLinear() else color;
     const color_u32 = color_linear.multiplyAlpha().toPackedU32();
-    for (min_y..max_y) |y| {
-        const row_start: [*]u32 = @ptrCast(@alignCast(draw_buffer.memory + y * draw_buffer.pitch + min_x * 4));
-        const len = max_x - min_x;
-        @memset(row_start[0..len], color_u32);
+    for (min[1]..max[1]) |y| {
+        const row_start: [*]u32 = @ptrCast(@alignCast(draw_buffer.memory + y * draw_buffer.pitch));
+        @memset(row_start[min[0]..max[0]], color_u32);
     }
 }
 
@@ -108,10 +140,13 @@ const wide_255: WideU8 = @splat(255);
 const wide_1: WideF32 = @splat(1);
 const wide_0: WideF32 = @splat(0);
 
-fn linearToSrgb(draw_buffer: *const DrawBuffer) void {
-    for (0..draw_buffer.height) |y| {
-        var x: u32 = 0;
-        while (x + lanes <= draw_buffer.width) : (x += lanes) {
+fn linearToSrgb(draw_buffer: *const DrawBuffer, clip_rect: math.Rectangle) void {
+    const min: @Vector(2, u32) = @round(clip_rect.min.vector());
+    const max: @Vector(2, u32) = @round(clip_rect.max.vector());
+
+    for (min[1]..max[1]) |y| {
+        var x: u32 = min[0];
+        while (x + lanes <= max[0]) : (x += lanes) {
             const pixel_ptr = draw_buffer.memory + y * draw_buffer.pitch + x * 4;
             inline for (0..3) |c_i| {
                 var c_255: WideF32 = undefined;
@@ -127,7 +162,7 @@ fn linearToSrgb(draw_buffer: *const DrawBuffer) void {
                 }
             }
         }
-        while (x < draw_buffer.width) : (x += 1) {
+        while (x < max[0]) : (x += 1) {
             const pixel_ptr = draw_buffer.memory + y * draw_buffer.pitch + x * 4;
             inline for (0..3) |i| {
                 const c_255: f32 = @floatFromInt(pixel_ptr[i]);

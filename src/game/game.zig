@@ -86,13 +86,14 @@ pub export fn updateAndRender(screen: *api.Screen, memory: *api.Memory, input: *
         render_group.addRectangle(.initCenterDim(block.p, block.dim), block.color);
     }
 
-    const draw_buffer = renderer.DrawBuffer{
+    const draw_buffer = trans_state.arena.pushStruct(renderer.DrawBuffer);
+    draw_buffer.* = .{
         .height = screen.height,
         .width = screen.width,
         .pitch = @intCast(screen.pitch),
         .memory = screen.memory,
     };
-    render_group.render(&draw_buffer);
+    render_group.render(&trans_state.arena, draw_buffer, &memory.work_queue);
 }
 
 pub export fn outputSound(audio: *api.Audio, memory: *api.Memory) callconv(.c) void {

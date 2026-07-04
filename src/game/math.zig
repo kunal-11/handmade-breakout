@@ -1,4 +1,4 @@
-pub const Vec2 = struct {
+pub const Vec2 = extern struct {
     x: f32,
     y: f32,
 
@@ -35,9 +35,13 @@ pub const Vec2 = struct {
     pub fn transpose(v: Vec2) Vec2 {
         return .init(v.y, v.x);
     }
+
+    pub fn vector(v: Vec2) @Vector(2, f32) {
+        return .{ v.x, v.y };
+    }
 };
 
-pub const Rectangle = struct {
+pub const Rectangle = extern struct {
     min: Vec2,
     max: Vec2,
 

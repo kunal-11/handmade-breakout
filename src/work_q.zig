@@ -9,6 +9,7 @@ pub const Signal = struct {
     pub fn incrementNotify(signal: *Signal) void {
         _ = signal.counter.fetchAdd(1, .acq_rel);
         if (builtin.cpu.arch.isWasm()) {
+            comptime std.debug.assert(builtin.cpu.has(.wasm, .atomics));
             const wake_count: i32 = 1;
             _ = asm volatile (
                 \\local.get %[ptr]
@@ -26,6 +27,7 @@ pub const Signal = struct {
 
     pub fn wait(signal: *Signal, expect: u32) void {
         if (builtin.cpu.arch.isWasm()) {
+            comptime std.debug.assert(builtin.cpu.has(.wasm, .atomics));
             const timeout: i64 = -1;
             const signed_expect: i32 = @bitCast(expect);
             _ = asm volatile (
