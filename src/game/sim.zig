@@ -2,7 +2,7 @@ const World = @import("world.zig");
 const math = @import("math.zig");
 
 const bounce_factor = 1;
-const collision_itrs = 5;
+const collision_itrs = 4;
 
 pub fn moveEntity(world: *World, entity: *World.Entity, dt: f32, only_screen_collision: bool) void {
     var delta_p = entity.dp.scale(dt);

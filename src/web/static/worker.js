@@ -1,11 +1,11 @@
-self.addEventListener("message", async (e) => {
-	function wasmLog(ptr, len) {
-		const bytes = new Uint8Array(e.data.buffer.buffer, ptr, len);
-		const copy = bytes.slice();
-		const message = new TextDecoder("utf-8").decode(copy);
-		console.log("wasm: ", message);
-	}
+function wasmLog(ptr, len) {
+	const bytes = new Uint8Array(e.data.buffer.buffer, ptr, len);
+	const copy = bytes.slice();
+	const message = new TextDecoder("utf-8").decode(copy);
+	console.log("wasm: ", message);
+}
 
+self.addEventListener("message", async (e) => {
 	const imports = {
 		env: {
 			memory: e.data.buffer,

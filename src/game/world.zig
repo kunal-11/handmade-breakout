@@ -38,7 +38,7 @@ pub fn init(world: *World) void {
         .blocks = undefined,
         .block_count = 0,
     };
-    world.generateBlocks(.init(.init(-0.5 * world_dim.x, 0), .init(0.5 * world_dim.x, 0.45 * world_dim.y)), .init(32, 32), 4);
+    world.generateBlocks(.init(.init(-0.4 * world_dim.x, 0), .init(0.4 * world_dim.x, 0.4 * world_dim.y)), .init(32, 32), 4);
 }
 
 fn generateBlocks(world: *World, rect: math.Rectangle, block_dim: math.Vec2, gap: f32) void {

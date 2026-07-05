@@ -1,9 +1,3 @@
-const shared_buffer = new WebAssembly.Memory({ initial: 4096, maximum: 4096, shared: true });
-const dv = new DataView(shared_buffer.buffer);
-
-const KB = 1 << 10;
-const MB = 1 << 20;
-
 function wasmLog(ptr, len) {
 	const bytes = new Uint8Array(shared_buffer.buffer, ptr, len);
 	const copy = bytes.slice();
@@ -11,17 +5,22 @@ function wasmLog(ptr, len) {
 	console.log("wasm: ", message);
 }
 
+// init wasm
+const shared_buffer = new WebAssembly.Memory({ initial: 4096, maximum: 4096, shared: true });
+const dv = new DataView(shared_buffer.buffer);
+
 const imports = {
 	env: {
 		memory: shared_buffer,
 		jsConsoleLog: wasmLog,
 	}
 };
-
 const app = await WebAssembly.instantiateStreaming(fetch("app.wasm"), imports);
-console.log(app.instance.exports);
 
 // allocate memory
+const KB = 1 << 10;
+const MB = 1 << 20;
+
 const permanent_len = 1 * MB;
 const transient_len = 10 * MB;
 const app_memory = app.instance.exports.allocMemory(permanent_len, transient_len);
@@ -33,7 +32,7 @@ const worker_url = URL.createObjectURL(worker_bytes);
 
 const worker_count = 7;
 const stack_size = 1 * MB;
-const worker_stack_base = app.instance.exports.allocBytes(worker_count * stack_size);
+const worker_stack_base = app.instance.exports.allocBytes((worker_count + 1) * stack_size);
 
 for (let i = 0; i < worker_count; i++) {
 	const worker = new Worker(worker_url, { type: "module" });
@@ -109,7 +108,7 @@ const image_data = screen_ctx.createImageData(canvas.width, canvas.height);
 
 // render loop
 let last_render = 0;
-const frame_sync_epsilon = 1.5;
+const frame_sync_epsilon = 2;
 function frame(now) {
 	if (now - last_render + frame_sync_epsilon >= target_frame_time_ms) {
 		copyInputs();
