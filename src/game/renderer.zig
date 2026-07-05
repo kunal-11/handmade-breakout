@@ -53,8 +53,8 @@ pub const Group = struct {
         group.item_count += 1;
     }
 
-    const tile_height = 128;
-    const tile_width = 128;
+    const tile_height = 64;
+    const tile_width = 64;
     pub fn render(group: *Group, trans_arena: *util.Arena, draw_buffer: *const DrawBuffer, work_queue: *api.WorkQueue) void {
         const flusher = util.Arena.Flusher.init(trans_arena);
         defer flusher.flush();
