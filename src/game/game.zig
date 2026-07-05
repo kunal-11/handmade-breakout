@@ -11,11 +11,11 @@ const State = struct {
     is_initialized: bool,
     world: World,
 
-    pub fn get(memory: *api.Memory, screen_dims: math.Vec2) *State {
+    pub fn get(memory: *api.Memory) *State {
         util.assert(memory.permanent_storage_len >= @sizeOf(State), "permanent storage OOM");
         const state: *State = @ptrCast(@alignCast(memory.permanent_storage[0..@sizeOf(State)]));
         if (!state.is_initialized) {
-            state.world.init(screen_dims);
+            state.world.init();
             state.is_initialized = true;
         }
         return state;
@@ -42,7 +42,7 @@ const TransientState = struct {
     }
 };
 
-const input_dp = 0.7;
+const input_dp = 700;
 fn readInput(input: *api.Input) math.Vec2 {
     var dp = math.Vec2.zero;
 
@@ -57,25 +57,23 @@ fn readInput(input: *api.Input) math.Vec2 {
     return dp;
 }
 
-const ball_dp = math.Vec2.init(0.4, 0.4);
+const ball_dp = math.Vec2.init(400, 400);
 pub export fn updateAndRender(screen: *api.Screen, memory: *api.Memory, input: *api.Input) callconv(.c) void {
     const trans_state = TransientState.get(memory);
     defer trans_state.flusher.flush();
 
-    const screen_height: f32 = @floatFromInt(screen.height);
-    const screen_dims = math.Vec2.init(@floatFromInt(screen.width), screen_height).scale(1.0 / screen_height);
-    const game_state = State.get(memory, screen_dims);
+    const game_state = State.get(memory);
 
     game_state.world.paddle.dp = readInput(input);
     if (game_state.world.paddle.dp.x != 0 and game_state.world.ball.dp.lenSq() == 0) {
         game_state.world.ball.dp = ball_dp;
     }
 
-    sim.moveEntity(&game_state.world, &game_state.world.paddle, screen_dims, input.seconds_to_update, true);
-    sim.moveEntity(&game_state.world, &game_state.world.ball, screen_dims, input.seconds_to_update, false);
+    sim.moveEntity(&game_state.world, &game_state.world.paddle, input.seconds_to_update, true);
+    sim.moveEntity(&game_state.world, &game_state.world.ball, input.seconds_to_update, false);
 
-    const render_group = trans_state.arena.pushStruct(renderer.Group);
-    render_group.* = .{ .screen_dims = .init(@floatFromInt(screen.width), @floatFromInt(screen.height)) };
+    const screen_dim = math.Vec2.init(@floatFromInt(screen.width), @floatFromInt(screen.height));
+    const render_group = renderer.Group.init(&trans_state.arena, World.world_dim, screen_dim);
 
     render_group.addClear(.black);
 

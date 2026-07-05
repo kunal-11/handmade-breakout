@@ -16,40 +16,41 @@ paddle: Entity,
 blocks: [2048]Entity,
 block_count: u32,
 
+pub const world_dim = math.Vec2.init(1600, 900);
+
 const World = @This();
 
-pub fn init(world: *World, screen_dims: math.Vec2) void {
+pub fn init(world: *World) void {
     world.* = .{
         .ball = .{
-            .p = .init(0, -0.335),
+            .p = .init(0, -0.335 * world_dim.y),
             .dp = .zero,
-            .dim = .init(0.02, 0.02),
+            .dim = .init(32, 32),
             .color = .blue,
         },
         .paddle = .{
-            .p = .init(0, -0.45),
+            .p = .init(0, -0.45 * world_dim.y),
             .dp = .zero,
-            .dim = .init(0.1, 0.01),
+            .dim = .init(128, 8),
             .color = .red,
         },
 
         .blocks = undefined,
         .block_count = 0,
     };
-    world.generateBlocks(.init(.init(-0.5 * screen_dims.x, 0), .init(0.5 * screen_dims.x, 0.45)), .init(0.02, 0.02), 0.005);
+    world.generateBlocks(.init(.init(-0.5 * world_dim.x, 0), .init(0.5 * world_dim.x, 0.45 * world_dim.y)), .init(32, 32), 4);
 }
 
-fn generateBlocks(world: *World, rect: math.Rectangle, dim: math.Vec2, gap: f32) void {
-    const align_offset = math.Vec2.init(dim.x, -dim.y).scale(0.5);
-
+fn generateBlocks(world: *World, rect: math.Rectangle, block_dim: math.Vec2, gap: f32) void {
+    const align_offset = math.Vec2.init(block_dim.x, -block_dim.y).scale(0.5);
     var y: f32 = rect.min.y;
-    while (y + dim.y + gap <= rect.max.y) : (y += dim.y + gap) {
+    while (y + block_dim.y + gap <= rect.max.y) : (y += block_dim.y + gap) {
         var x: f32 = rect.min.x;
-        while (x + dim.x + gap <= rect.max.x) : (x += dim.x + gap) {
+        while (x + block_dim.x + gap <= rect.max.x) : (x += block_dim.x + gap) {
             addBlock(world, .{
                 .p = math.Vec2.init(x, y).add(align_offset),
                 .dp = .zero,
-                .dim = dim,
+                .dim = block_dim,
                 .color = .green,
             });
         }

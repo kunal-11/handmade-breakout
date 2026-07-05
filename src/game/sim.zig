@@ -4,10 +4,10 @@ const math = @import("math.zig");
 const bounce_factor = 1;
 const collision_itrs = 5;
 
-pub fn moveEntity(world: *World, entity: *World.Entity, screen_dims: math.Vec2, dt: f32, only_screen_collision: bool) void {
+pub fn moveEntity(world: *World, entity: *World.Entity, dt: f32, only_screen_collision: bool) void {
     var delta_p = entity.dp.scale(dt);
     for (0..collision_itrs) |_| {
-        if (collide(world, screen_dims, entity, delta_p, only_screen_collision)) |collision| {
+        if (collide(world, entity, delta_p, only_screen_collision)) |collision| {
             if (collision.hit_entity) |hit_entity| {
                 if (hit_entity != &world.paddle) {
                     world.removeBlock(hit_entity);
@@ -31,7 +31,7 @@ const CollisionResponse = struct {
     normal: math.Vec2,
 };
 
-fn collide(world: *World, screen_dims: math.Vec2, entity: *World.Entity, delta_p: math.Vec2, only_screen: bool) ?CollisionResponse {
+fn collide(world: *World, entity: *World.Entity, delta_p: math.Vec2, only_screen: bool) ?CollisionResponse {
     var t_min: f32 = 1;
     var response: ?CollisionResponse = null;
 
@@ -49,7 +49,7 @@ fn collide(world: *World, screen_dims: math.Vec2, entity: *World.Entity, delta_p
         }
     }
 
-    if (collideScreen(entity, screen_dims, delta_p, t_min)) |collision| {
+    if (collideEdges(entity, World.world_dim, delta_p, t_min)) |collision| {
         t_min = collision.t_min;
         response = collision;
     }
@@ -74,37 +74,37 @@ const TestWall = struct {
     normal: math.Vec2,
 };
 
-fn collideScreen(entity: *World.Entity, screen_dims: math.Vec2, delta_p: math.Vec2, current_t_min: f32) ?CollisionResponse {
+fn collideEdges(entity: *World.Entity, world_dim: math.Vec2, delta_p: math.Vec2, current_t_min: f32) ?CollisionResponse {
     const minkowski_radius = entity.dim.scale(0.5);
-    const screen_half_dim = screen_dims.scale(0.5);
+    const world_half_dim = world_dim.scale(0.5);
 
     const test_walls = [4]TestWall{
         .{
             .p = minkowski_radius.y,
-            .radius = screen_half_dim.x,
+            .radius = world_half_dim.x,
             .delta_p = .init(delta_p.y, delta_p.x),
-            .entity_p = .init(entity.p.y + screen_half_dim.y, entity.p.x),
+            .entity_p = .init(entity.p.y + world_half_dim.y, entity.p.x),
             .normal = .init(0, 1),
         },
         .{
             .p = -minkowski_radius.y,
-            .radius = screen_half_dim.x,
+            .radius = world_half_dim.x,
             .delta_p = .init(delta_p.y, delta_p.x),
-            .entity_p = .init(entity.p.y - screen_half_dim.y, entity.p.x),
+            .entity_p = .init(entity.p.y - world_half_dim.y, entity.p.x),
             .normal = .init(0, -1),
         },
         .{
             .p = minkowski_radius.x,
-            .radius = screen_half_dim.y,
+            .radius = world_half_dim.y,
             .delta_p = .init(delta_p.x, delta_p.y),
-            .entity_p = entity.p.subtract(.init(-screen_half_dim.x, 0)),
+            .entity_p = entity.p.subtract(.init(-world_half_dim.x, 0)),
             .normal = .init(1, 0),
         },
         .{
             .p = -minkowski_radius.x,
-            .radius = screen_half_dim.y,
+            .radius = world_half_dim.y,
             .delta_p = .init(delta_p.x, delta_p.y),
-            .entity_p = entity.p.subtract(.init(screen_half_dim.x, 0)),
+            .entity_p = entity.p.subtract(.init(world_half_dim.x, 0)),
             .normal = .init(-1, 0),
         },
     };

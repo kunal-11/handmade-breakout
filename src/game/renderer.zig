@@ -19,12 +19,21 @@ pub const Group = struct {
     items: [2048]Item = undefined,
     item_count: u32 = 0,
 
-    screen_dims: math.Vec2,
+    camera_scale: math.Vec2,
+    camera_translate: math.Vec2,
 
-    // world coordinates: origin at screen center, y is up, screen height = 1 unit
-    // screen coordinates: origin at top left, y is down, pixels
+    pub fn init(arena: *util.Arena, world_dim: math.Vec2, screen_dim: math.Vec2) *Group {
+        const group = arena.pushStruct(Group);
+        const camera_scale = @min(screen_dim.x / world_dim.x, screen_dim.y / world_dim.y);
+        group.* = .{
+            .camera_scale = .init(camera_scale, -camera_scale),
+            .camera_translate = screen_dim.scale(0.5),
+        };
+        return group;
+    }
+
     fn worldToScreen(group: *Group, world_p: math.Vec2) math.Vec2 {
-        return world_p.hadamard(.init(group.screen_dims.y, -group.screen_dims.y)).add(group.screen_dims.scale(0.5));
+        return world_p.hadamard(group.camera_scale).add(group.camera_translate);
     }
 
     pub fn addClear(group: *Group, color: util.Color) void {
