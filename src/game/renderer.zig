@@ -171,8 +171,11 @@ fn drawRectangle(
     const color_linear = if (linear_blending_enabled) tint.srgbToLinear() else tint;
     const tint_f = color_linear.multiplyAlpha().vector();
 
-    const rect_dim = rect.getDim();
-    const px_to_tx = if (has_texture) math.Vec2.init(@floatFromInt(texture.width - 2), @floatFromInt(texture.height - 2)).hadamard(.init(1 / rect_dim.x, 1 / rect_dim.y)) else .zero;
+    const px_to_tx = if (has_texture) blk: {
+        const texture_dim = math.Vec2.init(@floatFromInt(texture.width), @floatFromInt(texture.height));
+        const rect_dim = rect.getDim();
+        break :blk math.Vec2.init((texture_dim.x - 2) / rect_dim.x, (texture_dim.y - 2) / rect_dim.y);
+    };
 
     for (min[1]..max[1]) |y| {
         const y_f: f32 = @floatFromInt(y);
