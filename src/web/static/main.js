@@ -130,7 +130,7 @@ const image_data = screen_ctx.createImageData(canvas.width, canvas.height);
 
 // render loop
 let last_render = 0;
-const frame_sync_epsilon = 2;
+const frame_sync_epsilon = 1;
 function frame(now) {
 	if (now - last_render + frame_sync_epsilon >= target_frame_time_ms) {
 		resetInputs();

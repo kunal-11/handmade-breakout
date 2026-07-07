@@ -35,7 +35,7 @@ pub fn build(b: *std.Build) void {
     const wasm_target = b.resolveTargetQuery(.{
         .cpu_arch = .wasm32,
         .os_tag = .freestanding,
-        .cpu_features_add = std.Target.wasm.featureSet(&.{ .atomics, .bulk_memory, .simd128 }),
+        .cpu_features_add = std.Target.wasm.featureSet(&.{ .atomics, .bulk_memory, .simd128, .multivalue, .relaxed_simd, .nontrapping_fptoint }),
     });
     const wasm_opts = Options{ .optimize = optimize, .target = wasm_target };
     const wasm_exe = buildGameWasm(b, wasm_opts);
