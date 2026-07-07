@@ -2,7 +2,6 @@ const api = @import("game_api");
 const game = @import("game");
 const wq = @import("work_queue");
 
-// TODO: reuse game's arena impl
 const Arena = struct {
     memory: [*]u8,
     used: usize = 0,
@@ -110,7 +109,6 @@ export fn allocAudio(buf_samples: usize, sample_rate: u32) callconv(.c) *api.Aud
     return audio;
 }
 
-// work queue workers
 export fn allocBytes(len: usize) callconv(.c) [*]u8 {
     return global_arena.pushArray(u8, len).ptr;
 }
@@ -134,7 +132,6 @@ export fn worker(memory: *api.Memory, sp: i32) callconv(.c) noreturn {
     }
 }
 
-// file handeling
 const asset_handle: u32 = 0;
 
 fn openFile(file_type: api.FileOps.FileType) callconv(.c) *api.FileOps.Handle {
@@ -150,13 +147,11 @@ fn readFile(handle: *api.FileOps.Handle, offset: u64, size: usize, dest: *anyopa
     return jsReadFile(js_handle.*, offset, size, dest);
 }
 
-// make sure these are exported
 comptime {
     _ = game.updateAndRender;
     _ = game.outputSound;
 }
 
-// error handling and logging
 extern fn jsConsoleLog([*]const u8, usize) callconv(.c) void;
 
 const std = @import("std");

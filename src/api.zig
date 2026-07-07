@@ -4,7 +4,7 @@ const builtin = @import("builtin");
 pub const cache_line = 64;
 
 /// 32 bits per pixel - R G B X
-/// pitch should be cache aligned with padding if needed
+/// pitch should be cache aligned with padding if possible
 pub const Screen = extern struct {
     memory: [*]align(cache_line) u8,
     width: u32,
@@ -46,13 +46,10 @@ pub const FileOps = extern struct {
         asset,
     };
     pub const Handle = anyopaque;
-
-    pub const OpenFile = *const fn (file_type: FileType) callconv(.c) ?*Handle;
-
     pub const ReadFile = *const fn (handle: *Handle, offset: u64, size: usize, dest: *anyopaque) callconv(.c) bool;
 
     /// returns null on error
-    open_file: OpenFile,
+    open_file: *const fn (file_type: FileType) callconv(.c) ?*Handle,
 
     /// returns true on success
     read_file: ReadFile,
