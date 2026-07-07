@@ -215,8 +215,8 @@ fn drawRectangle(
                     const color_shift: WideU32 = @splat(c * 8);
 
                     var sample00: WideF32 = @floatFromInt((sample00_u32 >> color_shift) & wide_255_u32);
-                    var sample10: WideF32 = @floatFromInt((sample10_u32 >> color_shift) & wide_255_u32);
                     var sample01: WideF32 = @floatFromInt((sample01_u32 >> color_shift) & wide_255_u32);
+                    var sample10: WideF32 = @floatFromInt((sample10_u32 >> color_shift) & wide_255_u32);
                     var sample11: WideF32 = @floatFromInt((sample11_u32 >> color_shift) & wide_255_u32);
 
                     sample00 *= wide_1_255;
@@ -278,8 +278,8 @@ fn drawRectangle(
                 const frac_y = ty - @floor(ty);
 
                 const sample00_u32: u32 = @bitCast((texture.memory + sample_y * texture.pitch + sample_x * 4)[0..4].*);
-                const sample10_u32: u32 = @bitCast((texture.memory + sample_y * texture.pitch + (sample_x + 1) * 4)[0..4].*);
-                const sample01_u32: u32 = @bitCast((texture.memory + (sample_y + 1) * texture.pitch + sample_x * 4)[0..4].*);
+                const sample01_u32: u32 = @bitCast((texture.memory + sample_y * texture.pitch + (sample_x + 1) * 4)[0..4].*);
+                const sample10_u32: u32 = @bitCast((texture.memory + (sample_y + 1) * texture.pitch + sample_x * 4)[0..4].*);
                 const sample11_u32: u32 = @bitCast((texture.memory + (sample_y + 1) * texture.pitch + (sample_x + 1) * 4)[0..4].*);
                 inline for (0..4) |c| {
                     const color_shift: u32 = c * 8;
