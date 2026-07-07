@@ -213,12 +213,11 @@ fn drawRectangle(
 
                 inline for (0..4) |c| {
                     const color_shift: WideU32 = @splat(c * 8);
-                    const color_mask: WideU32 = @splat(255 << (c * 8));
 
-                    var sample00: WideF32 = @floatFromInt((sample00_u32 & color_mask) >> color_shift);
-                    var sample10: WideF32 = @floatFromInt((sample10_u32 & color_mask) >> color_shift);
-                    var sample01: WideF32 = @floatFromInt((sample01_u32 & color_mask) >> color_shift);
-                    var sample11: WideF32 = @floatFromInt((sample11_u32 & color_mask) >> color_shift);
+                    var sample00: WideF32 = @floatFromInt((sample00_u32 >> color_shift) & wide_255_u32);
+                    var sample10: WideF32 = @floatFromInt((sample10_u32 >> color_shift) & wide_255_u32);
+                    var sample01: WideF32 = @floatFromInt((sample01_u32 >> color_shift) & wide_255_u32);
+                    var sample11: WideF32 = @floatFromInt((sample11_u32 >> color_shift) & wide_255_u32);
 
                     sample00 *= wide_1_255;
                     sample01 *= wide_1_255;
@@ -236,23 +235,26 @@ fn drawRectangle(
                 sample[c] *= @splat(tint_f[c]);
             }
 
-            var color: [4]WideF32 = undefined;
+            var result_pixel: WideU32 = @splat(0);
+
+            const src_pixel: WideU32 = @bitCast(pixel_ptr[0 .. lanes * 4].*);
             inline for (0..4) |c| {
-                inline for (0..lanes) |lane| {
-                    color[c][lane] = @floatFromInt(pixel_ptr[lane * 4 + c]);
-                }
-                color[c] *= wide_1_255;
+                const color_shift: WideU32 = @splat(c * 8);
+
+                var color_f: WideF32 = @floatFromInt((src_pixel >> color_shift) & wide_255_u32);
+                color_f *= wide_1_255;
 
                 // blend
-                color[c] = sample[c] + color[c] * (wide_1 - sample[3]);
+                color_f = sample[c] + color_f * (wide_1 - sample[3]);
 
                 // write blended color
-                color[c] = math.clamp(color[c], wide_0, wide_1) * wide_255_f;
-                const color_u8: WideU8 = @round(color[c]);
-                inline for (0..lanes) |lane| {
-                    pixel_ptr[lane * 4 + c] = color_u8[lane];
-                }
+                color_f = math.clamp(color_f, wide_0, wide_1) * wide_255_f;
+                const color_u32: WideU32 = @round(color_f);
+
+                result_pixel |= color_u32 << color_shift;
             }
+
+            pixel_ptr[0 .. lanes * 4].* = @bitCast(result_pixel);
         }
 
         while (x < max[0]) : (x += 1) {
@@ -281,18 +283,17 @@ fn drawRectangle(
                 const sample11_u32: u32 = @bitCast((texture.memory + (sample_y + 1) * texture.pitch + (sample_x + 1) * 4)[0..4].*);
                 inline for (0..4) |c| {
                     const color_shift: u32 = c * 8;
-                    const color_mask: u32 = 255 << (c * 8);
 
-                    var sample00: f32 = @floatFromInt((sample00_u32 & color_mask) >> color_shift);
+                    var sample00: f32 = @floatFromInt((sample00_u32 >> color_shift) & 255);
                     sample00 *= scalar_1_255;
 
-                    var sample01: f32 = @floatFromInt((sample01_u32 & color_mask) >> color_shift);
+                    var sample01: f32 = @floatFromInt((sample01_u32 >> color_shift) & 255);
                     sample01 *= scalar_1_255;
 
-                    var sample10: f32 = @floatFromInt((sample10_u32 & color_mask) >> color_shift);
+                    var sample10: f32 = @floatFromInt((sample10_u32 >> color_shift) & 255);
                     sample10 *= scalar_1_255;
 
-                    var sample11: f32 = @floatFromInt((sample11_u32 & color_mask) >> color_shift);
+                    var sample11: f32 = @floatFromInt((sample11_u32 >> color_shift) & 255);
                     sample11 *= scalar_1_255;
 
                     const sample0 = sample01 * frac_x + sample00 * (1 - frac_x);
@@ -306,18 +307,23 @@ fn drawRectangle(
                 sample[c] *= tint_f[c];
             }
 
-            var color: [4]f32 = undefined;
+            var result_pixel: u32 = 0;
+            const src_pixel: u32 = @bitCast(pixel_ptr[0..4].*);
             inline for (0..4) |c| {
-                color[c] = @floatFromInt(pixel_ptr[c]);
-                color[c] *= scalar_1_255;
+                const color_shift: u32 = c * 8;
+
+                var color_f: f32 = @floatFromInt((src_pixel >> color_shift) & 255);
+                color_f *= scalar_1_255;
 
                 // blend
-                color[c] = sample[c] + color[c] * (1 - sample[3]);
+                color_f = sample[c] + color_f * (1 - sample[3]);
 
                 // write blended color
-                color[c] = math.clamp(color[c], 0, 1) * 255;
-                pixel_ptr[c] = @round(color[c]);
+                color_f = math.clamp(color_f, 0, 1) * 255;
+                const color_u32: u32 = @round(color_f);
+                result_pixel |= color_u32 << color_shift;
             }
+            pixel_ptr[0..4].* = @bitCast(result_pixel);
         }
     }
 }
@@ -330,11 +336,12 @@ const WideU32 = @Vector(lanes, u32);
 
 const wide_iota: WideF32 = .{ 0, 1, 2, 3 };
 
-const wide_255_f: WideF32 = @splat(255);
-
 const scalar_1_255 = 1.0 / 255.0;
 const wide_1_255: WideF32 = @splat(scalar_1_255);
-const wide_255: WideU8 = @splat(255);
+
+const wide_255_u32: WideU32 = @splat(255);
+const wide_255_f: WideF32 = @splat(255);
+
 const wide_1: WideF32 = @splat(1);
 const wide_0: WideF32 = @splat(0);
 const wide_half: WideF32 = @splat(0.5);
@@ -347,27 +354,41 @@ fn linearToSrgb(draw_buffer: *const DrawBuffer, clip_rect: math.Rectangle) void 
         var x: u32 = min[0];
         while (x + lanes <= max[0]) : (x += lanes) {
             const pixel_ptr = draw_buffer.memory + y * draw_buffer.pitch + x * 4;
-            inline for (0..3) |c_i| {
-                var c_255: WideF32 = undefined;
-                inline for (0..lanes) |lane_i| {
-                    c_255[lane_i] = @floatFromInt(pixel_ptr[lane_i * 4 + c_i]);
-                }
 
-                const c_srgb = @min(wide_1, @max(wide_0, @sqrt(c_255 / wide_255_f)));
-                const c_u8: WideU8 = @round(c_srgb * wide_255);
+            const src_pixel: WideU32 = @bitCast(pixel_ptr[0 .. lanes * 4].*);
+            var result_pixel: WideU32 = src_pixel & (wide_255_u32 << @splat(24));
+            inline for (0..3) |c| {
+                const color_shift: WideU32 = @splat(c * 8);
 
-                inline for (0..lanes) |lane_i| {
-                    pixel_ptr[lane_i * 4 + c_i] = c_u8[lane_i];
-                }
+                var color: WideF32 = @floatFromInt((src_pixel >> color_shift) & wide_255_u32);
+                color *= wide_1_255;
+
+                color = math.clamp(color, wide_0, wide_1);
+                color = math.clamp(@sqrt(color), wide_0, wide_1);
+
+                const color_u32: WideU32 = @round(color * wide_255_f);
+                result_pixel |= color_u32 << color_shift;
             }
+            pixel_ptr[0 .. lanes * 4].* = @bitCast(result_pixel);
         }
         while (x < max[0]) : (x += 1) {
             const pixel_ptr = draw_buffer.memory + y * draw_buffer.pitch + x * 4;
-            inline for (0..3) |i| {
-                const c_255: f32 = @floatFromInt(pixel_ptr[i]);
-                const c_srgb = math.clamp(@sqrt(c_255 / 255), 0, 1);
-                pixel_ptr[i] = @round(c_srgb * 255);
+
+            const src_pixel: u32 = @bitCast(pixel_ptr[0..4].*);
+            var result_pixel: u32 = src_pixel & (255 << 24);
+            inline for (0..3) |c| {
+                const color_shift: u32 = c * 8;
+
+                var color: f32 = @floatFromInt((src_pixel >> color_shift) & 255);
+                color *= scalar_1_255;
+
+                color = math.clamp(color, 0, 1);
+                color = math.clamp(@sqrt(color), 0, 1);
+
+                const color_u32: u32 = @round(color * 255);
+                result_pixel |= color_u32 << color_shift;
             }
+            pixel_ptr[0..4].* = @bitCast(result_pixel);
         }
     }
 }
