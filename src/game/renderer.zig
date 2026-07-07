@@ -285,15 +285,13 @@ fn drawRectangle(
                     const color_shift: u32 = c * 8;
 
                     var sample00: f32 = @floatFromInt((sample00_u32 >> color_shift) & 255);
-                    sample00 *= scalar_1_255;
-
                     var sample01: f32 = @floatFromInt((sample01_u32 >> color_shift) & 255);
-                    sample01 *= scalar_1_255;
-
                     var sample10: f32 = @floatFromInt((sample10_u32 >> color_shift) & 255);
-                    sample10 *= scalar_1_255;
-
                     var sample11: f32 = @floatFromInt((sample11_u32 >> color_shift) & 255);
+
+                    sample00 *= scalar_1_255;
+                    sample01 *= scalar_1_255;
+                    sample10 *= scalar_1_255;
                     sample11 *= scalar_1_255;
 
                     const sample0 = sample01 * frac_x + sample00 * (1 - frac_x);
