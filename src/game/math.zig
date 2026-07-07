@@ -59,6 +59,6 @@ pub const Rectangle = extern struct {
     }
 };
 
-pub fn clamp(val: f32, low: f32, high: f32) f32 {
+pub fn clamp(val: anytype, low: anytype, high: anytype) @TypeOf(val) {
     return @min(@max(val, low), high);
 }

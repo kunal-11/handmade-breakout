@@ -71,15 +71,16 @@ export fn allocMemory(permanent_len: usize, transient_len: usize) callconv(.c) *
             .complete_all_work = &wq.completeAllWorkShim,
         },
 
-        // TODO: platform file/queue ops
-        .file_ops = undefined,
+        .file_ops = .{
+            .open_file = &openFile,
+            .read_file = &readFile,
+        },
     };
     return memory;
 }
 
 export fn allocScreen(width: u32, height: u32) callconv(.c) *api.Screen {
     const screen = global_arena.pushStruct(api.Screen);
-    // TODO: align pitch properly
     screen.* = .{
         .height = height,
         .width = width,
@@ -131,6 +132,21 @@ export fn worker(memory: *api.Memory, sp: i32) callconv(.c) noreturn {
     }
 }
 
+const asset_handle: u32 = 0;
+
+fn openFile(file_type: api.FileOps.FileType) callconv(.c) *api.FileOps.Handle {
+    return switch (file_type) {
+        .asset => @constCast(&asset_handle),
+    };
+}
+
+extern fn jsReadFile(file_id: u32, offset: u64, len: usize, dest: *anyopaque) bool;
+
+fn readFile(handle: *api.FileOps.Handle, offset: u64, size: usize, dest: *anyopaque) callconv(.c) bool {
+    const js_handle: *u32 = @ptrCast(@alignCast(handle));
+    return jsReadFile(js_handle.*, offset, size, dest);
+}
+
 comptime {
     _ = game.updateAndRender;
     _ = game.outputSound;
@@ -139,10 +155,7 @@ comptime {
 extern fn jsConsoleLog([*]const u8, usize) callconv(.c) void;
 
 const std = @import("std");
-
-pub fn panic(msg: []const u8, error_return_trace: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
-    _ = error_return_trace;
-    _ = ret_addr;
+pub fn panic(msg: []const u8, _: ?*std.builtin.StackTrace, _: ?usize) noreturn {
     jsConsoleLog(msg.ptr, msg.len);
     @trap();
 }

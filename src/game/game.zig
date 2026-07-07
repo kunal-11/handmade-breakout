@@ -2,10 +2,12 @@ const api = @import("game_api");
 
 const sim = @import("sim.zig");
 const renderer = @import("renderer.zig");
+const assets = @import("assets.zig");
 const World = @import("world.zig");
 
 const math = @import("math.zig");
 const util = @import("util.zig");
+const mem = @import("mem.zig");
 
 const State = struct {
     is_initialized: bool,
@@ -25,8 +27,12 @@ const State = struct {
 const TransientState = struct {
     is_initialized: bool,
 
-    arena: util.Arena,
-    flusher: util.Arena.Flusher,
+    arena: mem.Arena,
+    task_pool: mem.Pool,
+
+    asset_store: *assets.Store,
+
+    flusher: mem.Flusher,
 
     pub fn get(memory: *api.Memory) *TransientState {
         util.assert(memory.transient_storage_len >= @sizeOf(TransientState), "transient state OOM");
@@ -35,6 +41,9 @@ const TransientState = struct {
             state.arena = .{
                 .memory = memory.transient_storage[@sizeOf(TransientState)..memory.transient_storage_len],
             };
+            state.task_pool = .init(&state.arena, 16, 1 * mem.MB);
+            state.asset_store = assets.Store.init(&state.arena, &memory.file_ops, &memory.work_queue, &state.task_pool, 5 * mem.MB) catch @panic("asset store init failed");
+
             state.flusher = .init(&state.arena);
             state.is_initialized = true;
         }
@@ -42,7 +51,7 @@ const TransientState = struct {
     }
 };
 
-const input_dp = 700;
+const input_dp = 750;
 fn readInput(input: *api.Input) math.Vec2 {
     var dp = math.Vec2.zero;
 
@@ -57,7 +66,7 @@ fn readInput(input: *api.Input) math.Vec2 {
     return dp;
 }
 
-const ball_dp = math.Vec2.init(400, 400);
+const ball_dp = math.Vec2.init(450, 450);
 pub export fn updateAndRender(screen: *api.Screen, memory: *api.Memory, input: *api.Input) callconv(.c) void {
     const trans_state = TransientState.get(memory);
     defer trans_state.flusher.flush();
@@ -73,12 +82,17 @@ pub export fn updateAndRender(screen: *api.Screen, memory: *api.Memory, input: *
     sim.moveEntity(&game_state.world, &game_state.world.ball, input.seconds_to_update, false);
 
     const screen_dim = math.Vec2.init(@floatFromInt(screen.width), @floatFromInt(screen.height));
-    const render_group = renderer.Group.init(&trans_state.arena, World.world_dim, screen_dim);
+    const render_group = renderer.Group.init(
+        &trans_state.arena,
+        trans_state.asset_store,
+        World.world_dim,
+        screen_dim,
+    );
 
     render_group.addClear(.black);
 
-    render_group.addRectangle(.initCenterDim(game_state.world.paddle.p, game_state.world.paddle.dim), game_state.world.paddle.color);
-    render_group.addRectangle(.initCenterDim(game_state.world.ball.p, game_state.world.ball.dim), game_state.world.ball.color);
+    render_group.addBitmap(.initCenterDim(game_state.world.paddle.p, game_state.world.paddle.dim), .paddle, game_state.world.paddle.color);
+    render_group.addBitmap(.initCenterDim(game_state.world.ball.p, game_state.world.ball.dim), .puck, game_state.world.ball.color);
 
     for (game_state.world.blocks[0..game_state.world.block_count]) |block| {
         render_group.addRectangle(.initCenterDim(block.p, block.dim), block.color);

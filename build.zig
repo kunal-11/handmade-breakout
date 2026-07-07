@@ -11,21 +11,19 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const native_opts = Options{ .optimize = optimize, .target = target };
 
+    // build game so
     const game_so = buildGameSo(b, native_opts);
 
-    // build game so
     const lib_cmd = b.addInstallArtifact(game_so, .{});
     const lib_step = b.step("lib", "Build game dynamic lib");
     lib_step.dependOn(&lib_cmd.step);
 
-    // emit game so asm
     const emit_asm = b.addInstallFile(game_so.getEmittedAsm(), "game.s");
     const asm_step = b.step("asm", "emit game assembly");
     asm_step.dependOn(&emit_asm.step);
 
-    const sdl_platform_exe = buildSDLPlatformExe(b, native_opts);
-
     // run sld platform
+    const sdl_platform_exe = buildSDLPlatformExe(b, native_opts);
     const run_cmd = b.addRunArtifact(sdl_platform_exe);
     if (b.args) |args| {
         run_cmd.addArgs(args);
@@ -33,6 +31,7 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run SDL platform");
     run_step.dependOn(&run_cmd.step);
 
+    // build web platform
     const wasm_target = b.resolveTargetQuery(.{
         .cpu_arch = .wasm32,
         .os_tag = .freestanding,
@@ -41,7 +40,6 @@ pub fn build(b: *std.Build) void {
     const wasm_opts = Options{ .optimize = optimize, .target = wasm_target };
     const wasm_exe = buildGameWasm(b, wasm_opts);
 
-    // build web files
     const web_out_dir = "web";
     const wasm_cmd = b.addInstallArtifact(wasm_exe, .{ .dest_dir = .{ .override = .{ .custom = web_out_dir } } });
     const web_platform = b.addInstallDirectory(.{
@@ -49,21 +47,33 @@ pub fn build(b: *std.Build) void {
         .install_dir = .{ .custom = web_out_dir },
         .install_subdir = "",
     });
-
+    const web_assets = b.addInstallFile(b.path(".assets/assets.hra"), "web/assets.hra");
     const web_step = b.step("web", "Build game web files");
     web_step.dependOn(&wasm_cmd.step);
     web_step.dependOn(&web_platform.step);
+    web_step.dependOn(&web_assets.step);
+
+    // asset packer
+    const packer_exe = buildAssetPacker(b, native_opts);
+    const pack_cmd = b.addRunArtifact(packer_exe);
+    if (b.args) |args| {
+        pack_cmd.addArgs(args);
+    }
+    const pack_step = b.step("pack", "Pack assets");
+    pack_step.dependOn(&pack_cmd.step);
 
     // check build for errors, no binaries created
     const check = b.step("check", "Check build");
     check.dependOn(&game_so.step);
     check.dependOn(&sdl_platform_exe.step);
     check.dependOn(&wasm_exe.step);
+    check.dependOn(&packer_exe.step);
 
     // default build step
     b.installArtifact(game_so);
     b.installArtifact(sdl_platform_exe);
     b.installArtifact(wasm_exe);
+    b.installArtifact(packer_exe);
 }
 
 fn gameApiModule(b: *std.Build, opts: Options) *std.Build.Module {
@@ -83,6 +93,30 @@ fn workQueueModule(b: *std.Build, game_api: *std.Build.Module, opts: Options) *s
             .{ .name = "game_api", .module = game_api },
         },
     });
+}
+
+fn buildAssetPacker(b: *std.Build, opts: Options) *Step.Compile {
+    const asset_module = b.createModule(.{
+        .root_source_file = b.path("src/game/assets.zig"),
+        .target = opts.target,
+        .optimize = opts.optimize,
+    });
+
+    const packer_module = b.createModule(.{
+        .root_source_file = b.path("src/asset_packer/packer.zig"),
+        .target = opts.target,
+        .optimize = opts.optimize,
+        .imports = &.{
+            .{ .name = "assets", .module = asset_module },
+        },
+    });
+
+    const exe = b.addExecutable(.{
+        .name = "packer",
+        .root_module = packer_module,
+    });
+
+    return exe;
 }
 
 fn buildGameWasm(b: *std.Build, opts: Options) *Step.Compile {

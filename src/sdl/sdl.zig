@@ -160,9 +160,7 @@ pub fn main() !void {
             },
 
             .file_ops = .{
-                .find_files_with_ext = &findFileWithExt,
-                .close_iterator = &closeFileIterator,
-                .open_next_file = &openNextFile,
+                .open_file = &openFile,
                 .read_file = &readFile,
             },
         },
@@ -300,57 +298,19 @@ fn wqWorker(high_priority_queue: *wq.WorkQueue, low_priority_queue: *wq.WorkQueu
 }
 
 // File Handling
-const FileIterator = extern struct {
-    header: api.FileOps.Iterator,
-    files: [*][*:0]u8,
-    file_count: u32,
-    current_index: u32,
-};
-
-const file_search_fmt = ".assets/*.{s}";
-
-fn findFileWithExt(ext: [*:0]const u8) callconv(.c) ?*api.FileOps.Iterator {
-    var buf: [64]u8 = undefined;
-    const pattern = std.fmt.bufPrintZ(&buf, file_search_fmt, .{ext}) catch {
-        std.debug.panic("File Error: ext too long!\n", .{});
-    };
-    const files = sdl3.filesystem.globDirectory(".", pattern, .{}) catch return null;
-    const result = sdl3.allocator.create(FileIterator) catch return null;
-
-    result.* = .{
-        .files = files.ptr,
-        .file_count = @intCast(files.len),
-        .current_index = 0,
-        .header = .{ .has_error = false },
-    };
-    return @ptrCast(result);
-}
-
-fn closeFileIterator(api_itr: *api.FileOps.Iterator) callconv(.c) void {
-    const itr: *FileIterator = @ptrCast(@alignCast(api_itr));
-    sdl3.free(itr.files);
-    sdl3.free(itr);
-}
+const asset_file = ".assets/assets.hra";
 
 const FileHandle = struct {
     file: std.Io.File,
 };
 
-fn openNextFile(api_itr: *api.FileOps.Iterator) callconv(.c) ?*api.FileOps.Handle {
-    const itr: *FileIterator = @ptrCast(@alignCast(api_itr));
-    if (itr.current_index >= itr.file_count) return null;
-
-    const file_path = std.mem.span(itr.files[itr.current_index]);
-    const file = std.Io.Dir.cwd().openFile(single_threaded_io, file_path, .{}) catch {
-        itr.header.has_error = true;
-        return null;
+fn openFile(file_type: api.FileOps.FileType) callconv(.c) ?*api.FileOps.Handle {
+    const file_path = switch (file_type) {
+        .asset => asset_file,
     };
-    const handle = sdl3.allocator.create(FileHandle) catch {
-        itr.header.has_error = true;
-        return null;
-    };
+    const file = std.Io.Dir.cwd().openFile(single_threaded_io, file_path, .{}) catch return null;
+    const handle = sdl3.allocator.create(FileHandle) catch return null;
     handle.* = .{ .file = file };
-    itr.current_index += 1;
     return handle;
 }
 

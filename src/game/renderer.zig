@@ -1,9 +1,12 @@
 const util = @import("util.zig");
+const mem = @import("mem.zig");
 const math = @import("math.zig");
+
+const assets = @import("assets.zig");
 
 const api = @import("game_api");
 
-const linear_blending_enabled = false;
+const linear_blending_enabled = true;
 
 const Item = union(enum) {
     clear: struct {
@@ -11,7 +14,8 @@ const Item = union(enum) {
     },
     rectangle: struct {
         rect: math.Rectangle,
-        color: util.Color,
+        texture: ?*assets.LoadedBitmap,
+        tint: util.Color,
     },
 };
 
@@ -19,21 +23,30 @@ pub const Group = struct {
     items: [2048]Item = undefined,
     item_count: u32 = 0,
 
+    asset_store: *assets.Store,
+
     camera_scale: math.Vec2,
     camera_translate: math.Vec2,
 
-    pub fn init(arena: *util.Arena, world_dim: math.Vec2, screen_dim: math.Vec2) *Group {
+    pub fn init(arena: *mem.Arena, asset_store: *assets.Store, world_dim: math.Vec2, screen_dim: math.Vec2) *Group {
         const group = arena.pushStruct(Group);
         const camera_scale = @min(screen_dim.x / world_dim.x, screen_dim.y / world_dim.y);
         group.* = .{
+            .asset_store = asset_store,
             .camera_scale = .init(camera_scale, -camera_scale),
             .camera_translate = screen_dim.scale(0.5),
         };
         return group;
     }
 
-    fn worldToScreen(group: *Group, world_p: math.Vec2) math.Vec2 {
+    fn transformPoint(group: *Group, world_p: math.Vec2) math.Vec2 {
         return world_p.hadamard(group.camera_scale).add(group.camera_translate);
+    }
+
+    fn transformRect(group: *Group, world_rect: math.Rectangle) math.Rectangle {
+        const screen_min = group.transformPoint(world_rect.min);
+        const screen_max = group.transformPoint(world_rect.max);
+        return .init(.init(screen_min.x, screen_max.y), .init(screen_max.x, screen_min.y));
     }
 
     pub fn addClear(group: *Group, color: util.Color) void {
@@ -41,10 +54,21 @@ pub const Group = struct {
     }
 
     pub fn addRectangle(group: *Group, rect: math.Rectangle, color: util.Color) void {
-        const screen_min = group.worldToScreen(rect.min);
-        const screen_max = group.worldToScreen(rect.max);
-        const screen_rect = math.Rectangle.init(.init(screen_min.x, screen_max.y), .init(screen_max.x, screen_min.y));
-        group.addItem(.{ .rectangle = .{ .rect = screen_rect, .color = color } });
+        group.addItem(.{ .rectangle = .{
+            .rect = group.transformRect(rect),
+            .tint = color,
+            .texture = null,
+        } });
+    }
+
+    pub fn addBitmap(group: *Group, rect: math.Rectangle, bitmap_id: assets.Id, tint: util.Color) void {
+        if (group.asset_store.getBitmap(bitmap_id)) |bitmap| {
+            group.addItem(.{ .rectangle = .{
+                .rect = group.transformRect(rect),
+                .tint = tint,
+                .texture = bitmap,
+            } });
+        } else group.asset_store.loadBitmap(bitmap_id);
     }
 
     fn addItem(group: *Group, item: Item) void {
@@ -55,8 +79,8 @@ pub const Group = struct {
 
     const tile_height = 64;
     const tile_width = 64;
-    pub fn render(group: *Group, trans_arena: *util.Arena, draw_buffer: *const DrawBuffer, work_queue: *api.WorkQueue) void {
-        const flusher = util.Arena.Flusher.init(trans_arena);
+    pub fn render(group: *Group, trans_arena: *mem.Arena, draw_buffer: *const DrawBuffer, work_queue: *api.WorkQueue) void {
+        const flusher = mem.Flusher.init(trans_arena);
         defer flusher.flush();
 
         const screen_dims = math.Vec2.init(@floatFromInt(draw_buffer.width), @floatFromInt(draw_buffer.height));
@@ -91,7 +115,13 @@ pub const Group = struct {
         for (tile.group.items[0..tile.group.item_count]) |item| {
             switch (item) {
                 .clear => |clear| drawClear(tile.draw_buffer, tile.clip_rect, clear.color),
-                .rectangle => |rect| drawRectangle(tile.draw_buffer, tile.clip_rect, rect.rect, rect.color),
+                .rectangle => |rect| {
+                    if (rect.texture) |texture| {
+                        drawRectangle(tile.draw_buffer, tile.clip_rect, rect.rect, rect.tint, true, texture);
+                    } else {
+                        drawRectangle(tile.draw_buffer, tile.clip_rect, rect.rect, rect.tint, false, {});
+                    }
+                },
             }
         }
         if (linear_blending_enabled) {
@@ -122,7 +152,14 @@ fn drawClear(draw_buffer: *const DrawBuffer, clip_rect: math.Rectangle, color: u
     }
 }
 
-fn drawRectangle(draw_buffer: *const DrawBuffer, clip_rect: math.Rectangle, rect: math.Rectangle, color: util.Color) void {
+fn drawRectangle(
+    draw_buffer: *const DrawBuffer,
+    clip_rect: math.Rectangle,
+    rect: math.Rectangle,
+    tint: util.Color,
+    comptime has_texture: bool,
+    texture: if (has_texture) *assets.LoadedBitmap else void,
+) void {
     const min_f = @max(clip_rect.min.vector(), rect.min.vector());
     const max_f = @min(clip_rect.max.vector(), rect.max.vector());
 
@@ -131,11 +168,142 @@ fn drawRectangle(draw_buffer: *const DrawBuffer, clip_rect: math.Rectangle, rect
     const min: @Vector(2, u32) = @round(min_f);
     const max: @Vector(2, u32) = @round(max_f);
 
-    const color_linear = if (linear_blending_enabled) color.srgbToLinear() else color;
-    const color_u32 = color_linear.multiplyAlpha().toPackedU32();
+    const color_linear = if (linear_blending_enabled) tint.srgbToLinear() else tint;
+    const tint_f = color_linear.multiplyAlpha().vector();
+
+    const rect_dim = rect.getDim();
+    const px_to_tx = if (has_texture) math.Vec2.init(@floatFromInt(texture.width - 2), @floatFromInt(texture.height - 2)).hadamard(.init(1 / rect_dim.x, 1 / rect_dim.y)) else .zero;
+
     for (min[1]..max[1]) |y| {
-        const row_start: [*]u32 = @ptrCast(@alignCast(draw_buffer.memory + y * draw_buffer.pitch));
-        @memset(row_start[min[0]..max[0]], color_u32);
+        const y_f: f32 = @floatFromInt(y);
+        var x: u32 = min[0];
+        while (x + lanes <= max[0]) : (x += lanes) {
+            const pixel_ptr = draw_buffer.memory + y * draw_buffer.pitch + x * 4;
+
+            // sample texture
+            var sample: [4]WideF32 = undefined;
+            if (has_texture) {
+                const x_f: f32 = @floatFromInt(x);
+
+                const px = x_f + 0.5 - rect.min.x;
+                const py = y_f + 0.5 - rect.min.y;
+
+                const wide_px = @as(WideF32, @splat(px)) + wide_iota;
+                const wide_py: WideF32 = @splat(py);
+
+                const wide_tx = wide_px * @as(WideF32, @splat(px_to_tx.x)) + wide_half;
+                const wide_ty = wide_py * @as(WideF32, @splat(px_to_tx.y)) + wide_half;
+
+                const sample_x: WideU32 = @floor(wide_tx);
+                const sample_y: WideU32 = @floor(wide_ty);
+
+                const frac_x = wide_tx - @floor(wide_tx);
+                const frac_y = wide_ty - @floor(wide_ty);
+
+                inline for (0..4) |c| {
+                    var sample00: WideF32 = undefined;
+                    var sample10: WideF32 = undefined;
+                    var sample01: WideF32 = undefined;
+                    var sample11: WideF32 = undefined;
+                    inline for (0..lanes) |lane| {
+                        sample00[lane] = @floatFromInt((texture.memory + sample_y[lane] * texture.pitch + sample_x[lane] * 4)[c]);
+                        sample01[lane] = @floatFromInt((texture.memory + sample_y[lane] * texture.pitch + (sample_x[lane] + 1) * 4)[c]);
+
+                        sample10[lane] = @floatFromInt((texture.memory + (sample_y[lane] + 1) * texture.pitch + sample_x[lane] * 4)[c]);
+                        sample11[lane] = @floatFromInt((texture.memory + (sample_y[lane] + 1) * texture.pitch + (sample_x[lane] + 1) * 4)[c]);
+                    }
+                    sample00 *= wide_1_255;
+                    sample01 *= wide_1_255;
+                    sample10 *= wide_1_255;
+                    sample11 *= wide_1_255;
+
+                    const sample0 = sample01 * frac_x + sample00 * (wide_1 - frac_x);
+                    const sample1 = sample11 * frac_x + sample10 * (wide_1 - frac_x);
+                    sample[c] = sample1 * frac_y + sample0 * (wide_1 - frac_y);
+                }
+            } else {
+                sample = @splat(wide_1);
+            }
+            inline for (0..4) |c| {
+                sample[c] *= @splat(tint_f[c]);
+            }
+
+            var color: [4]WideF32 = undefined;
+            inline for (0..4) |c| {
+                inline for (0..lanes) |lane| {
+                    color[c][lane] = @floatFromInt(pixel_ptr[lane * 4 + c]);
+                }
+                color[c] *= wide_1_255;
+
+                // blend
+                color[c] = sample[c] + color[c] * (wide_1 - sample[3]);
+
+                // write blended color
+                color[c] = math.clamp(color[c], wide_0, wide_1) * wide_255_f;
+                const color_u8: WideU8 = @round(color[c]);
+                inline for (0..lanes) |lane| {
+                    pixel_ptr[lane * 4 + c] = color_u8[lane];
+                }
+            }
+        }
+
+        while (x < max[0]) : (x += 1) {
+            const pixel_ptr = draw_buffer.memory + y * draw_buffer.pitch + x * 4;
+
+            // sample texture
+            var sample: [4]f32 = undefined;
+            if (has_texture) {
+                const x_f: f32 = @floatFromInt(x);
+
+                const px = x_f + 0.5 - rect.min.x;
+                const py = y_f + 0.5 - rect.min.y;
+
+                const tx = px * px_to_tx.x + 0.5;
+                const ty = py * px_to_tx.y + 0.5;
+
+                const sample_x: u32 = @floor(tx);
+                const sample_y: u32 = @floor(ty);
+
+                const frac_x = tx - @floor(tx);
+                const frac_y = ty - @floor(ty);
+
+                inline for (0..4) |c| {
+                    var sample00: f32 = @floatFromInt((texture.memory + sample_y * texture.pitch + sample_x * 4)[c]);
+                    sample00 *= scalar_1_255;
+
+                    var sample01: f32 = @floatFromInt((texture.memory + sample_y * texture.pitch + (sample_x + 1) * 4)[c]);
+                    sample01 *= scalar_1_255;
+
+                    var sample10: f32 = @floatFromInt((texture.memory + (sample_y + 1) * texture.pitch + sample_x * 4)[c]);
+                    sample10 *= scalar_1_255;
+
+                    var sample11: f32 = @floatFromInt((texture.memory + (sample_y + 1) * texture.pitch + (sample_x + 1) * 4)[c]);
+                    sample11 *= scalar_1_255;
+
+                    const sample0 = sample01 * frac_x + sample00 * (1 - frac_x);
+                    const sample1 = sample11 * frac_x + sample10 * (1 - frac_x);
+                    sample[c] = sample1 * frac_y + sample0 * (1 - frac_y);
+                }
+            } else {
+                sample = @splat(1);
+            }
+            inline for (0..4) |c| {
+                sample[c] *= tint_f[c];
+            }
+
+            var color: [4]f32 = undefined;
+            inline for (0..4) |c| {
+                color[c] = @floatFromInt(pixel_ptr[c]);
+                color[c] *= scalar_1_255;
+
+                // blend
+                color[c] = sample[c] + color[c] * (1 - sample[3]);
+
+                // write blended color
+                color[c] = math.clamp(color[c], 0, 1) * 255;
+                pixel_ptr[c] = @round(color[c]);
+            }
+        }
     }
 }
 
@@ -143,11 +311,18 @@ const lanes = 4;
 
 const WideF32 = @Vector(lanes, f32);
 const WideU8 = @Vector(lanes, u8);
+const WideU32 = @Vector(lanes, u32);
+
+const wide_iota: WideF32 = .{ 0, 1, 2, 3 };
 
 const wide_255_f: WideF32 = @splat(255);
+
+const scalar_1_255 = 1.0 / 255.0;
+const wide_1_255: WideF32 = @splat(scalar_1_255);
 const wide_255: WideU8 = @splat(255);
 const wide_1: WideF32 = @splat(1);
 const wide_0: WideF32 = @splat(0);
+const wide_half: WideF32 = @splat(0.5);
 
 fn linearToSrgb(draw_buffer: *const DrawBuffer, clip_rect: math.Rectangle) void {
     const min: @Vector(2, u32) = @round(clip_rect.min.vector());

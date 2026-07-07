@@ -42,25 +42,19 @@ pub const WorkQueue = extern struct {
 };
 
 pub const FileOps = extern struct {
-    /// this is header, implentations may add fields. always pass by pointer.
-    pub const Iterator = extern struct {
-        has_error: bool,
+    pub const FileType = enum(u8) {
+        asset,
     };
-    /// returns null on error, close Iterator when done
-    pub const FindFilesWithExt = *const fn (ext: [*:0]const u8) callconv(.c) ?*Iterator;
-    pub const CloseIterator = *const fn (itr: *Iterator) callconv(.c) void;
-
     pub const Handle = anyopaque;
-    /// returns null on ended or error, check Iterator.has_error for details
-    pub const OpenNextFile = *const fn (group: *Iterator) callconv(.c) ?*Handle;
+
+    pub const OpenFile = *const fn (file_type: FileType) callconv(.c) ?*Handle;
+
+    pub const ReadFile = *const fn (handle: *Handle, offset: u64, size: usize, dest: *anyopaque) callconv(.c) bool;
+
+    /// returns null on error
+    open_file: OpenFile,
 
     /// returns true on success
-    pub const ReadFile = *const fn (handle: *Handle, offset: u64, size: u64, dest: *anyopaque) callconv(.c) bool;
-
-    find_files_with_ext: FindFilesWithExt,
-    close_iterator: CloseIterator,
-
-    open_next_file: OpenNextFile,
     read_file: ReadFile,
 };
 

@@ -25,13 +25,13 @@ pub fn init(world: *World) void {
         .ball = .{
             .p = .init(0, -0.335 * world_dim.y),
             .dp = .zero,
-            .dim = .init(32, 32),
+            .dim = .init(28, 28),
             .color = .blue,
         },
         .paddle = .{
             .p = .init(0, -0.45 * world_dim.y),
             .dp = .zero,
-            .dim = .init(128, 8),
+            .dim = .init(130, 14),
             .color = .red,
         },
 

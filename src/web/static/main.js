@@ -5,6 +5,30 @@ function wasmLog(ptr, len) {
 	console.log("wasm: ", message);
 }
 
+const file_paths = ["assets.hra"];
+
+function readFile(file_id, offset, len, dest) {
+	try {
+		const xhr = new XMLHttpRequest();
+		xhr.open("GET", file_paths[file_id], false);
+		xhr.setRequestHeader("Range", `bytes=${offset}-${offset + BigInt(len - 1)}`)
+		xhr.overrideMimeType("text/plain; charset=x-user-defined");
+		xhr.send();
+
+		if (xhr.status !== 206) return false;
+
+		const bytes = new Uint8Array(xhr.responseText.length);
+		for (let i = 0; i < xhr.responseText.length; i++) {
+			bytes[i] = xhr.responseText.charCodeAt(i) & 0xff;
+		}
+		new Uint8Array(shared_buffer.buffer).set(bytes, dest);
+		return true;
+	} catch (err) {
+		console.log("main fetch failed", err);
+		return false;
+	}
+}
+
 // init wasm
 const shared_buffer = new WebAssembly.Memory({ initial: 4096, maximum: 4096, shared: true });
 const dv = new DataView(shared_buffer.buffer);
@@ -13,6 +37,7 @@ const imports = {
 	env: {
 		memory: shared_buffer,
 		jsConsoleLog: wasmLog,
+		jsReadFile: readFile,
 	}
 };
 const app = await WebAssembly.instantiateStreaming(fetch("app.wasm"), imports);
@@ -22,7 +47,7 @@ const KB = 1 << 10;
 const MB = 1 << 20;
 
 const permanent_len = 1 * MB;
-const transient_len = 10 * MB;
+const transient_len = 50 * MB;
 const app_memory = app.instance.exports.allocMemory(permanent_len, transient_len);
 
 // setup workers
