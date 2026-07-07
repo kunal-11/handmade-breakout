@@ -82,8 +82,10 @@ const key_indices = {
 	"KeyD": 3,
 };
 
-let inputs = [];
 let paused = false;
+
+const keyboard_controller_offset = 0;
+const button_state_size = 8;
 
 window.addEventListener("keydown", (e) => {
 	if (e.repeat) return;
@@ -92,9 +94,9 @@ window.addEventListener("keydown", (e) => {
 	} else {
 		const index = key_indices[e.code];
 		if (index === undefined) return;
-		const state = inputs[index] ??= { down: false, half_transitions: 0 };
-		state.down = true;
-		state.half_transitions += 1;
+		const transitions = dv.getUint32(app_input + keyboard_controller_offset + index * button_state_size, true);
+		dv.setUint32(app_input + keyboard_controller_offset + index * button_state_size, transitions + 1, true);
+		dv.setUint32(app_input + keyboard_controller_offset + index * button_state_size + 4, 1, true);
 	}
 });
 
@@ -102,20 +104,15 @@ window.addEventListener("keyup", (e) => {
 	if (e.repeat) return;
 	const index = key_indices[e.code];
 	if (index === undefined) return;
-	const state = inputs[index] ??= { down: false, half_transitions: 0 };
-	state.down = false;
-	state.half_transitions += 1;
+	const transitions = dv.getUint32(app_input + keyboard_controller_offset + index * button_state_size, true);
+	dv.setUint32(app_input + keyboard_controller_offset + index * button_state_size, transitions + 1, true);
+	dv.setUint32(app_input + keyboard_controller_offset + index * button_state_size + 4, 0, true);
 });
 
-const keyboard_controller_offset = 0;
-const button_state_size = 8;
 
-function copyInputs() {
+function resetInputs() {
 	for (let i = 0; i < key_count; i++) {
-		const state = inputs[i] ??= { down: false, half_transitions: 0 };
-		dv.setUint32(app_input + keyboard_controller_offset + i * button_state_size, state.half_transitions, true);
-		dv.setUint32(app_input + keyboard_controller_offset + i * button_state_size + 4, state.down ? 1 : 0, true);
-		state.half_transitions = 0;
+		dv.setUint32(app_input + keyboard_controller_offset + i * button_state_size, 0, true);
 	}
 }
 
@@ -136,7 +133,7 @@ let last_render = 0;
 const frame_sync_epsilon = 2;
 function frame(now) {
 	if (now - last_render + frame_sync_epsilon >= target_frame_time_ms) {
-		copyInputs();
+		resetInputs();
 		if (!paused) {
 			app.instance.exports.updateAndRender(app_screen, app_memory, app_input);
 			image_data.data.set(frame_buffer);
