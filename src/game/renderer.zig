@@ -331,7 +331,6 @@ fn drawRectangle(
 const lanes = 4;
 
 const WideF32 = @Vector(lanes, f32);
-const WideU8 = @Vector(lanes, u8);
 const WideU32 = @Vector(lanes, u32);
 
 const wide_iota: WideF32 = .{ 0, 1, 2, 3 };
