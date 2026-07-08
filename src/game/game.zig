@@ -114,6 +114,10 @@ pub export fn updateAndRender(screen: *api.Screen, memory: *api.Memory, input: *
         .memory = screen.memory,
     };
     render_group.render(&trans_state.arena, draw_buffer, &memory.work_queue);
+
+    if (game_state.world.block_count == 0 or game_state.world.lives == 0) {
+        game_state.world.init();
+    }
 }
 
 pub export fn outputSound(audio: *api.Audio, memory: *api.Memory) callconv(.c) void {
