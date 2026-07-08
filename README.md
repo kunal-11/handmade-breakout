@@ -4,42 +4,34 @@ A simple breakout in zig to try out software rendering, web assembly. Supports 2
 1. Web - wasm deployed as static files
 2. SDL - native build
 
-No libraries used apart for SDL in platform for native windowing/audio.
-
 ## Overview
 
 The design is inspired by Handmade Hero.
-The game is compiled a separate library and loaded by browser (wasm) or SDL platform (dll). Platform contract is defined in src/api.zig
+The game is compiled a separate library and loaded by browser (wasm) or SDL platform (dll).
+Platform contract is defined in src/api.zig.
 1. Frame buffer (Screen)
 2. Inputs
 3. Memory (permanent and transient)
 4. File Reading for asset loading
 5. Work queue for multi threading
 
-It calls updateAndRender at specified frame intervals and the game updates the frame buffer.
+platform calls updateAndRender at specified frame intervals and the game writes to the frame buffer.
 
 ## Build Run
 
-1. Web
-
-build wasm -
+```sh
+# web build
 zig build web -Doptimize=ReleaseSmall
 
-start static file server -
+# start static file server on localhost:8000
 ./dev.sh
 
-runs on http://localhost:8000
-
-2. Native
-
-build dylib -
+# native shared lib build
 zig build lib -Doptimize=ReleaseSafe
 
-run the SDL -
+# run native SDL3 exe
 zig build run -Doptimize=ReleaseSafe
 
-3. Asset packer
-
-if any new assets are added, update the packfile -
+# pack assets if new are added
 zig build pack
-
+```
