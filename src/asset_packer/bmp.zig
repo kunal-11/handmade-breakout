@@ -62,16 +62,16 @@ fn parse(gpa: std.mem.Allocator, contents: []u8) !assets.LoadedBitmap {
     };
 
     const color_mask: @Vector(4, u32) = .{
-        info_header.blue_mask,
-        info_header.green_mask,
         info_header.red_mask,
+        info_header.green_mask,
+        info_header.blue_mask,
         info_header.alpha_mask,
     };
     const color_shift: @Vector(4, u5) = @intCast(@ctz(color_mask));
 
     var input_pixel: []u8 = contents[header.data_offset..];
     for (0..result.height) |y| {
-        var result_pixel = memory.ptr + y * result.pitch;
+        var result_pixel = memory.ptr + (result.height - 1 - y) * result.pitch;
         for (0..result.width) |_| {
             const input: u32 = @bitCast(input_pixel[0..4].*);
 

@@ -13,6 +13,8 @@ pub const Entity = struct {
 ball: Entity,
 paddle: Entity,
 
+lives: u32,
+
 blocks: [2048]Entity,
 block_count: u32,
 
@@ -34,6 +36,7 @@ pub fn init(world: *World) void {
             .dim = .init(130, 14),
             .color = .red,
         },
+        .lives = 5,
 
         .blocks = undefined,
         .block_count = 0,

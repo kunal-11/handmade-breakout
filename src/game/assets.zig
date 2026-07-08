@@ -33,6 +33,7 @@ pub const Id = enum(u32) {
 
     paddle,
     puck,
+    life,
 
     _,
 };

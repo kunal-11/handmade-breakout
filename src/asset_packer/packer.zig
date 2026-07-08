@@ -69,6 +69,7 @@ pub fn main(init: std.process.Init) !void {
 
     state.pushBitmap(".assets/paddle.bmp");
     state.pushBitmap(".assets/puck.bmp");
+    state.pushBitmap(".assets/life.bmp");
 
     try state.outputToFile(init.io, arena, ".assets/assets.hra");
 }

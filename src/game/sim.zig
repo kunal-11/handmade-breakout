@@ -12,6 +12,8 @@ pub fn moveEntity(world: *World, entity: *World.Entity, dt: f32, only_screen_col
                 if (hit_entity != &world.paddle) {
                     world.removeBlock(hit_entity);
                 }
+            } else if (collision.normal.x == 0 and collision.normal.y == 1 and world.lives > 0) {
+                world.lives -= 1;
             }
 
             const collision_t = collision.t_min;

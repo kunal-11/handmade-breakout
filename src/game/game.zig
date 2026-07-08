@@ -98,6 +98,14 @@ pub export fn updateAndRender(screen: *api.Screen, memory: *api.Memory, input: *
         render_group.addRectangle(.initCenterDim(block.p, block.dim), block.color);
     }
 
+    const life_p = math.Vec2.init(World.world_dim.x * 0.35, World.world_dim.y * 0.5 - 33);
+    const life_dim = math.Vec2.init(28, 33);
+    const life_gap: f32 = 10;
+    for (0..game_state.world.lives) |i| {
+        const p = life_p.add(.init((life_dim.x + life_gap) * @as(f32, @floatFromInt(i)), 0));
+        render_group.addBitmap(.initCenterDim(p, life_dim), .life, .white);
+    }
+
     const draw_buffer = trans_state.arena.pushStruct(renderer.DrawBuffer);
     draw_buffer.* = .{
         .height = screen.height,

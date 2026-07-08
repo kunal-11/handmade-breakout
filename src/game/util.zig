@@ -8,6 +8,7 @@ pub const Color = struct {
     pub const blue = init(0, 0, 1, 1);
     pub const green = init(0, 1, 0, 1);
     pub const black = init(0, 0, 0, 1);
+    pub const white = init(1, 1, 1, 1);
 
     pub inline fn init(r: f32, g: f32, b: f32, a: f32) Color {
         return .{ .r = r, .g = g, .b = b, .a = a };
